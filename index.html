@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ardent Tower Defense</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div id="gameWrapper">
+        <h1>Ardent Tower Defense</h1>
+
+        <div id="menu">
+            <h2>Defendé la base</h2>
+            <p>
+                Cada run arranca desde cero. Aguantá oleadas, comprá torres,
+                desbloqueá habilidades y superá tu récord.
+            </p>
+
+            <p class="recordText">
+                Récord actual: <strong id="bestScoreMenuText">0</strong> puntos
+            </p>
+
+            <div class="audioSettingsBox">
+                <h3>Audio</h3>
+
+                <label>
+                    <input type="checkbox" id="menuMusicToggle" checked>
+                    Música
+                </label>
+
+                <label>
+                    Volumen música
+                    <input type="range" id="menuMusicVolume" min="0" max="1" step="0.01" value="0.28">
+                </label>
+
+                <label>
+                    <input type="checkbox" id="menuSfxToggle" checked>
+                    Efectos
+                </label>
+
+                <label>
+                    Volumen efectos
+                    <input type="range" id="menuSfxVolume" min="0" max="1" step="0.01" value="0.28">
+                </label>
+            </div>
+
+            <button id="startGameBtn">Jugar</button>
+        </div>
+
+        <div id="gameArea" class="hidden">
+            <div id="hud">
+                <span>Wave: <strong id="waveText">1</strong></span>
+                <span>Vida: <strong id="hpText">20/20</strong></span>
+                <span>Barricada: <strong id="barricadeText">0/0</strong></span>
+                <span>Monedas: <strong id="coinsText">0</strong></span>
+                <span>Puntos: <strong id="scoreText">0</strong></span>
+
+                <button id="speedBtn" class="smallHudButton">Velocidad x1</button>
+                <button id="autoModeBtn" class="smallHudButton">Auto OFF</button>
+                <button id="pauseBtn" class="smallHudButton">Pausa</button>
+            </div>
+
+            <div id="abilityBar">
+                <div class="abilitySlot locked" id="abilityBombSlot">Q · Bomba</div>
+                <div class="abilitySlot locked" id="abilityFreezeSlot">W · Freezeo</div>
+                <div class="abilitySlot locked" id="abilityTsunamiSlot">E · Tsunami</div>
+                <div class="abilitySlot locked" id="abilityLightningSlot">R · Rayo</div>
+                <div class="abilitySlot locked" id="abilityMeteorSlot">F · Meteorito</div>
+            </div>
+
+            <div id="playStage">
+                <canvas id="gameCanvas" width="900" height="450"></canvas>
+
+                <div id="redFlash"></div>
+
+                <div id="bossBarBox" class="hidden">
+                    <div id="bossNameText">BOSS</div>
+                    <div id="bossBarBg">
+                        <div id="bossBarFill"></div>
+                    </div>
+                </div>
+
+                <div id="centerMessage" class="hidden"></div>
+
+                <div id="waveSummaryPanel" class="overlayPanel hidden">
+                    <h2>Wave completada</h2>
+                    <div class="summaryGrid">
+                        <p>Enemigos eliminados: <strong id="summaryKillsText">0</strong></p>
+                        <p>Oro ganado: <strong id="summaryGoldText">0</strong></p>
+                        <p>Puntos ganados: <strong id="summaryScoreText">0</strong></p>
+                        <p>Vida restante: <strong id="summaryHpText">0/0</strong></p>
+                        <p>Barricada: <strong id="summaryBarricadeText">0/0</strong></p>
+                        <p>Bonus por wave: <strong id="summaryBonusText">0</strong></p>
+                    </div>
+                    <button id="openShopBtn">Ir a la tienda</button>
+                </div>
+
+                <div id="shop" class="overlayPanel hidden">
+                    <h2>Tienda</h2>
+
+                    <div class="shopSections">
+                        <section class="shopSection">
+                            <h3>Stats</h3>
+
+                            <button id="upgradeDamageBtn">
+                                Mejorar daño<br>
+                                <small>Actual: <span id="playerDamageText">1</span></small><br>
+                                <span id="damageCostText">35</span> monedas
+                            </button>
+
+                            <button id="upgradeFireRateBtn">
+                                Mejorar velocidad<br>
+                                <small>Delay: <span id="playerFireDelayText">550</span>ms</small><br>
+                                <span id="fireRateCostText">50</span> monedas
+                            </button>
+
+                            <button id="upgradeMaxHpBtn">
+                                Mejorar vida máxima<br>
+                                <small>Actual: <span id="playerMaxHpText">20</span></small><br>
+                                <span id="maxHpCostText">80</span> monedas
+                            </button>
+
+                            <button id="upgradeCritBtn">
+                                Mejorar crítico<br>
+                                <small>Chance: <span id="critChanceText">0</span>%</small><br>
+                                <span id="critCostText">120</span> monedas
+                            </button>
+                        </section>
+
+                        <section class="shopSection">
+                            <h3>Consumibles</h3>
+
+                            <button id="buySmallPotionBtn">
+                                Poción chica<br>
+                                <small>Cura 6 en 2.5s</small><br>
+                                <span id="smallPotionCostText">15</span> monedas
+                            </button>
+
+                            <button id="buyMediumPotionBtn">
+                                Poción mediana<br>
+                                <small>Cura 14 en 3.5s</small><br>
+                                <span id="mediumPotionCostText">35</span> monedas
+                            </button>
+
+                            <button id="buyLargePotionBtn">
+                                Poción grande<br>
+                                <small>Cura 30 en 5s</small><br>
+                                <span id="largePotionCostText">70</span> monedas
+                            </button>
+
+                            <button id="repairBarricadeBtn">
+                                Reparar barricada<br>
+                                <small>Restaura vida de barricada</small><br>
+                                <span id="repairBarricadeCostText">45</span> monedas
+                            </button>
+
+                            <button id="upgradeBarricadeBtn">
+                                Mejorar barricada<br>
+                                <small><span id="barricadeTierText">Sin barricada</span></small><br>
+                                <span id="upgradeBarricadeCostText">100</span> monedas
+                            </button>
+                        </section>
+
+                        <section class="shopSection">
+                            <h3>Torres</h3>
+
+                            <div id="tower1BuyBox">
+                                <button id="buyTower1Btn">
+                                    Comprar torre básica<br>
+                                    <small>Dispara al más cercano</small><br>
+                                    <span id="tower1CostText">70</span> monedas
+                                </button>
+                            </div>
+
+                            <div id="tower1UpgradeBox" class="hidden">
+                                <button id="upgradeTower1Btn">
+                                    Mejorar torre básica<br>
+                                    <small>Nivel: <span id="tower1LevelText">1</span></small><br>
+                                    <span id="tower1UpgradeCostText">100</span> monedas
+                                </button>
+                            </div>
+
+                            <div id="tower2BuyBox">
+                                <button id="buyTower2Btn">
+                                    Comprar torre perforante<br>
+                                    <small>Golpea a 2 enemigos</small><br>
+                                    <span id="tower2CostText">160</span> monedas
+                                </button>
+                            </div>
+
+                            <div id="tower2UpgradeBox" class="hidden">
+                                <button id="upgradeTower2Btn">
+                                    Mejorar torre perforante<br>
+                                    <small>Nivel: <span id="tower2LevelText">1</span></small><br>
+                                    <span id="tower2UpgradeCostText">180</span> monedas
+                                </button>
+                            </div>
+
+                            <div id="tower3BuyBox">
+                                <button id="buyTower3Btn">
+                                    Comprar torre de hielo<br>
+                                    <small>Ralentiza en área</small><br>
+                                    <span id="tower3CostText">220</span> monedas
+                                </button>
+                            </div>
+
+                            <div id="tower3UpgradeBox" class="hidden">
+                                <button id="upgradeTower3Btn">
+                                    Mejorar torre de hielo<br>
+                                    <small>Nivel: <span id="tower3LevelText">1</span></small><br>
+                                    <span id="tower3UpgradeCostText">240</span> monedas
+                                </button>
+                            </div>
+                        </section>
+
+                        <section class="shopSection abilitiesShop">
+                            <h3>Habilidades</h3>
+
+                            <button id="buyBombBtn">
+                                Comprar Bomba<br>
+                                <small>Q · Daño en área</small><br>
+                                <span id="bombCostText">180</span> monedas
+                            </button>
+
+                            <button id="buyFreezeBtn">
+                                Comprar Congelar<br>
+                                <small>W · Ralentiza a todos</small><br>
+                                <span id="freezeCostText">280</span> monedas
+                            </button>
+
+                            <button id="buyTsunamiBtn">
+                                Comprar Tsunami<br>
+                                <small>E · Empuja y daña</small><br>
+                                <span id="tsunamiCostText">430</span> monedas
+                            </button>
+
+                            <button id="buyLightningBtn">
+                                Comprar Rayo ramificado<br>
+                                <small>R · Salta entre enemigos</small><br>
+                                <span id="lightningCostText">650</span> monedas
+                            </button>
+
+                            <button id="buyMeteorBtn">
+                                Comprar Meteorito<br>
+                                <small>F · Gran explosión</small><br>
+                                <span id="meteorCostText">950</span> monedas
+                            </button>
+                        </section>
+                    </div>
+
+                    <button id="nextWaveBtn" class="nextWaveButton">Siguiente oleada</button>
+                </div>
+
+                <div id="gameOverScreen" class="overlayPanel hidden">
+                    <h2>Run terminada</h2>
+                    <p id="deathMessageText">Tu base cayó.</p>
+                    <p>Puntos de esta run: <strong id="finalScoreText">0</strong></p>
+                    <p>Récord: <strong id="bestScoreText">0</strong></p>
+                    <button id="newRunBtn">Nueva run</button>
+                </div>
+                <div id="pausePanel" class="overlayPanel hidden">
+                    <h2>Pausa</h2>
+
+                    <div class="audioSettingsBox pauseAudioBox">
+                        <h3>Audio</h3>
+
+                        <label>
+                            <input type="checkbox" id="pauseMusicToggle" checked>
+                            Música
+                        </label>
+
+                        <label>
+                            Volumen música
+                            <input type="range" id="pauseMusicVolume" min="0" max="1" step="0.01" value="0.28">
+                        </label>
+
+                        <label>
+                            <input type="checkbox" id="pauseSfxToggle" checked>
+                            Efectos
+                        </label>
+
+                        <label>
+                            Volumen efectos
+                            <input type="range" id="pauseSfxVolume" min="0" max="1" step="0.01" value="0.28">
+                        </label>
+                    </div>
+
+                    <div class="pauseButtons">
+                        <button id="resumeBtn">Continuar</button>
+                        <button id="backToMenuBtn">Volver al menú</button>
+                        <button id="restartRunBtn" class="dangerButton">Reiniciar run</button>
+                    </div>
+
+                    <div id="confirmRestartBox" class="confirmBox hidden">
+                        <p>¿Seguro que querés reiniciar la run? Vas a perder todo el progreso actual.</p>
+                        <button id="confirmRestartBtn" class="dangerButton">Sí, reiniciar</button>
+                        <button id="cancelRestartBtn">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="info">
+                <p>
+                    Hecho por Alene <br>
+                    Habilidades de la Q a la F, Disparo: Click izquierdo - Spacebar
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
