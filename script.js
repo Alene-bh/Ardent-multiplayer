@@ -856,6 +856,10 @@ const nextWaveBtn = document.getElementById("nextWaveBtn");
 const repeatWaveBtn = document.getElementById("repeatWaveBtn");
 const autoRepeatWaveBtn = document.getElementById("autoRepeatWaveBtn");
 const newRunBtn = document.getElementById("newRunBtn");
+const spectateRunBtn = document.getElementById("spectateRunBtn");
+const leaveAfterDeathBtn = document.getElementById("leaveAfterDeathBtn");
+const nextSpectatorTargetBtn = document.getElementById("nextSpectatorTargetBtn");
+const spectatorStatusText = document.getElementById("spectatorStatusText");
 
 const playerDamageText = document.getElementById("playerDamageText");
 const playerFireDelayText = document.getElementById("playerFireDelayText");
@@ -971,11 +975,19 @@ const modeMenu = document.getElementById("modeMenu");
 const singlePlayerModeBtn = document.getElementById("singlePlayerModeBtn");
 const multiPlayerModeBtn = document.getElementById("multiPlayerModeBtn");
 const optionsModeBtn = document.getElementById("optionsModeBtn");
+const creditsModeBtn = document.getElementById("creditsModeBtn");
 const modeOptionsPanel = document.getElementById("modeOptionsPanel");
+const modeCreditsPanel = document.getElementById("modeCreditsPanel");
 const multiplayerMenu = document.getElementById("multiplayerMenu");
+const mpHomePanel = document.getElementById("mpHomePanel");
+const mpJoinPanel = document.getElementById("mpJoinPanel");
 const mpPlayerNameInput = document.getElementById("mpPlayerNameInput");
 const mpRoomSpeedSelect = document.getElementById("mpRoomSpeedSelect");
 const createRoomBtn = document.getElementById("createRoomBtn");
+const openJoinRoomPanelBtn = document.getElementById("openJoinRoomPanelBtn");
+const backToMpHomeBtn = document.getElementById("backToMpHomeBtn");
+const copyRoomCodeBtn = document.getElementById("copyRoomCodeBtn");
+const leaveRoomFromLobbyBtn = document.getElementById("leaveRoomFromLobbyBtn");
 const joinRoomBtn = document.getElementById("joinRoomBtn");
 const roomCodeInput = document.getElementById("roomCodeInput");
 const roomPanel = document.getElementById("roomPanel");
@@ -1072,7 +1084,13 @@ let multiplayer = {
     chatOpen: false,
     lastChatSentAt: 0,
     localTitanRewardsClaimed: {},
-    lastInventorySyncAt: 0
+    lastInventorySyncAt: 0,
+    spectating: false,
+    spectatorTargetId: "",
+    deathInfo: null,
+    deathReported: false,
+    pageVisible: true,
+    lastHostWarningAt: 0
 };
 
 let barricade;
@@ -2096,12 +2114,15 @@ function getWorldToScreenPoint(worldX, worldY) {
 }
 
 function updateCamera() {
-    if (!player) return;
+    const spectateTarget = getSpectatorTargetPlayer();
+    const focusX = spectateTarget ? Number(spectateTarget.x) : player?.x;
+    const focusY = spectateTarget ? Number(spectateTarget.y) : player?.y;
+    if (!Number.isFinite(focusX) || !Number.isFinite(focusY)) return;
     camera.zoom = getCameraZoom();
     const visibleWidth = getCameraVisibleWidth();
     const visibleHeight = getCameraVisibleHeight();
-    camera.x = player.x - visibleWidth / 2;
-    camera.y = player.y - visibleHeight / 2;
+    camera.x = focusX - visibleWidth / 2;
+    camera.y = focusY - visibleHeight / 2;
     clampCameraToWorld();
 }
 
@@ -3238,6 +3259,91 @@ function updateStartButtonSavedState() {
     }
 }
 
+
+function normalizePlayerNameKey(name) {
+    return String(name || "").trim().toLowerCase();
+}
+
+function getMultiplayerNameRole(name = getMultiplayerDisplayName()) {
+    const key = normalizePlayerNameKey(name);
+    if (key === "alene") return { developer: true, alphaTester: false, displayName: "Alene", title: "DEVELOPER" };
+    const alphaNames = {
+        saki: "Saki",
+        sakisita: "Sakisita",
+        ema: "Ema",
+        aza: "Aza",
+        dylan: "Dylan",
+        valen: "Valen",
+        lal: "Lal"
+    };
+    if (alphaNames[key]) return { developer: false, alphaTester: true, displayName: alphaNames[key], title: "ALPHA TESTER" };
+    return { developer: false, alphaTester: false, displayName: String(name || "Jugador").trim().slice(0, 18), title: "" };
+}
+
+function isLocalMultiplayerAdmin() {
+    return getMultiplayerNameRole(getMultiplayerDisplayName()).developer;
+}
+
+function applyMultiplayerRoleToLocalPlayer() {
+    const role = getMultiplayerNameRole(getMultiplayerDisplayName());
+    if (role.displayName) playerName = role.displayName;
+    if (playerNameInput) playerNameInput.value = playerName;
+    if (mpPlayerNameInput) mpPlayerNameInput.value = playerName;
+    if (player) {
+        player.name = playerName;
+        player.developer = Boolean(role.developer);
+        player.alphaTester = Boolean(role.alphaTester);
+    }
+    return role;
+}
+
+function isNameMultiplayerAdmin(name) {
+    return normalizePlayerNameKey(name) === "alene";
+}
+
+function namesMatchLoosely(a, b) {
+    return normalizePlayerNameKey(a).replace(/\s+/g, "") === normalizePlayerNameKey(b).replace(/\s+/g, "");
+}
+
+function showMultiplayerHomePanel() {
+    if (mpHomePanel) mpHomePanel.classList.remove("hidden");
+    if (mpJoinPanel) mpJoinPanel.classList.add("hidden");
+    if (roomPanel) roomPanel.classList.add("hidden");
+}
+
+function showMultiplayerJoinPanel() {
+    if (mpHomePanel) mpHomePanel.classList.add("hidden");
+    if (mpJoinPanel) mpJoinPanel.classList.remove("hidden");
+    if (roomPanel) roomPanel.classList.add("hidden");
+    if (roomCodeInput) setTimeout(() => roomCodeInput.focus(), 40);
+}
+
+function showMultiplayerRoomPanel() {
+    if (mpHomePanel) mpHomePanel.classList.add("hidden");
+    if (mpJoinPanel) mpJoinPanel.classList.add("hidden");
+    if (roomPanel) roomPanel.classList.remove("hidden");
+}
+
+function leaveMultiplayerRoomToHome() {
+    if (multiplayer.socket && multiplayer.inRoom) multiplayer.socket.emit("leaveRoom");
+    multiplayer.inRoom = false;
+    multiplayer.roomId = "";
+    multiplayer.hostId = "";
+    multiplayer.players = {};
+    setMultiplayerStatus("Saliste de la sala.");
+    showMultiplayerHomePanel();
+}
+
+function copyCurrentRoomCode() {
+    const code = String(currentRoomCodeText?.textContent || multiplayer.roomId || "").trim();
+    if (!code || code === "----") return;
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(code).then(() => setMultiplayerStatus(`Código ${code} copiado.`)).catch(() => setMultiplayerStatus(`Código de sala: ${code}`));
+    } else {
+        setMultiplayerStatus(`Código de sala: ${code}`);
+    }
+}
+
 function setMenuVisibility({ showMode = false, showSingle = false, showMultiplayer = false } = {}) {
     if (modeMenu) modeMenu.classList.toggle("hidden", !showMode);
     if (menu) menu.classList.toggle("hidden", !showSingle);
@@ -3256,6 +3362,7 @@ function showMultiplayerMenu() {
     multiplayer.enabled = true;
     if (mpPlayerNameInput) mpPlayerNameInput.value = playerNameInput?.value || playerName || "Jugador";
     setMenuVisibility({ showMultiplayer: true });
+    showMultiplayerHomePanel();
     connectMultiplayerSocket();
 }
 
@@ -3265,6 +3372,7 @@ function showModeMenu() {
     multiplayer.inRoom = false;
     if (multiplayer.socket) multiplayer.socket.emit("leaveRoom");
     if (multiplayerChatBox) multiplayerChatBox.classList.add("hidden");
+    showMultiplayerHomePanel();
     setMenuVisibility({ showMode: true });
     updateMultiplayerSpeedUI();
 }
@@ -3303,11 +3411,18 @@ function connectMultiplayerSocket() {
         speedIndex = Math.max(0, speedOptions.indexOf(gameSpeed));
         updateMultiplayerSpeedUI();
         if (currentRoomCodeText) currentRoomCodeText.textContent = multiplayer.roomId;
-        if (roomPanel) roomPanel.classList.remove("hidden");
+        showMultiplayerRoomPanel();
         setMultiplayerStatus(`Sala ${multiplayer.roomId} lista. Compartí este código con tus amigos.`);
         renderRoomPlayers(data.players || []);
         const me = (data.players || []).find(p => p.id === socket.id);
         if (me?.color) multiplayer.localPlayerColor = me.color;
+        if (multiplayer.enabled && isMultiplayerHost()) {
+            const nowWarn = performance.now();
+            if (nowWarn - (multiplayer.lastHostWarningAt || 0) > 2500) {
+                multiplayer.lastHostWarningAt = nowWarn;
+                showCenterMessage("Simulación transferida a tu navegador", 1100);
+            }
+        }
     });
 
     socket.on("roomUpdate", data => {
@@ -3336,6 +3451,7 @@ function connectMultiplayerSocket() {
 
     socket.on("chatMessage", data => {
         if (!data || data.roomId !== multiplayer.roomId) return;
+        if (handleIncomingMultiplayerSystemCommand(data)) return;
         appendMultiplayerChatMessage(data);
     });
 
@@ -3438,6 +3554,7 @@ function createMultiplayerRoom() {
         return;
     }
     playerName = getMultiplayerDisplayName();
+    applyMultiplayerRoleToLocalPlayer();
     localStorage.setItem("ardentPlayerName", playerName);
     const roomSpeed = clampMultiplayerSpeed(mpRoomSpeedSelect?.value || 1);
     multiplayer.roomSpeed = roomSpeed;
@@ -3458,6 +3575,7 @@ function joinMultiplayerRoom() {
         return;
     }
     playerName = getMultiplayerDisplayName();
+    applyMultiplayerRoleToLocalPlayer();
     localStorage.setItem("ardentPlayerName", playerName);
     socket.emit("joinRoom", { roomId, name: playerName });
 }
@@ -3507,24 +3625,126 @@ function sendMultiplayerChatText(rawText) {
     if (now - multiplayer.lastChatSentAt < 250) return;
     multiplayer.lastChatSentAt = now;
     const maybeCommand = text.toLowerCase();
-    if (isAllowedMultiplayerChatCommand(maybeCommand)) {
-        runMultiplayerChatCommand(maybeCommand);
-        multiplayer.socket.emit("chatCommand", { roomId: multiplayer.roomId, command: maybeCommand });
-    } else if (isForbiddenMultiplayerCommand(maybeCommand)) {
-        showCenterMessage("COMANDO BLOQUEADO EN MULTI", 900);
-        appendMultiplayerChatMessage({ roomId: multiplayer.roomId, type: "message", name: "Sistema", color: "#ff9f43", text: "Ese comando no está permitido en multiplayer." });
-    } else {
-        multiplayer.socket.emit("chatMessage", { roomId: multiplayer.roomId, text });
-    }
+    if (handleMultiplayerChatCommand(maybeCommand, text)) return;
+    multiplayer.socket.emit("chatMessage", { roomId: multiplayer.roomId, text });
 }
 
-function isAllowedMultiplayerChatCommand(command) {
-    return ["greedisgood", "canttouchme", "beginner"].includes(String(command || "").trim().toLowerCase());
+function handleMultiplayerChatCommand(command, originalText = command) {
+    const c = String(command || "").trim().toLowerCase();
+    if (!c) return false;
+
+    const admin = isLocalMultiplayerAdmin();
+    const normalCommands = ["canttouchme", "beginner"];
+    const adminOnlyCommands = ["greedisgood"];
+
+    if (isForbiddenMultiplayerCommand(c)) {
+        showCenterMessage("COMANDO BLOQUEADO EN MULTI", 900);
+        appendMultiplayerChatMessage({ roomId: multiplayer.roomId, type: "message", name: "Sistema", color: "#ff9f43", text: "Ese comando no está permitido en multiplayer." });
+        return true;
+    }
+
+    if (c.startsWith("add ")) {
+        if (!admin) {
+            appendMultiplayerChatMessage({ roomId: multiplayer.roomId, type: "message", name: "Sistema", color: "#ff9f43", text: "Solo Alene puede usar add." });
+            return true;
+        }
+        runMultiplayerAddCommand(originalText);
+        return true;
+    }
+
+    if (adminOnlyCommands.includes(c)) {
+        if (!admin) {
+            appendMultiplayerChatMessage({ roomId: multiplayer.roomId, type: "message", name: "Sistema", color: "#ff9f43", text: "Solo Alene puede usar greedisgood." });
+            return true;
+        }
+        runMultiplayerChatCommand(c);
+        multiplayer.socket.emit("chatCommand", { roomId: multiplayer.roomId, command: c });
+        return true;
+    }
+
+    if (normalCommands.includes(c)) {
+        runMultiplayerChatCommand(c);
+        multiplayer.socket.emit("chatCommand", { roomId: multiplayer.roomId, command: c });
+        return true;
+    }
+
+    if (admin && isKnownConsoleCommand(c)) {
+        runAllowedAdminMultiplayerConsoleCommand(c);
+        multiplayer.socket.emit("chatCommand", { roomId: multiplayer.roomId, command: c });
+        return true;
+    }
+
+    return false;
+}
+
+function isKnownConsoleCommand(command) {
+    const c = String(command || "").trim().toLowerCase();
+    if (!c) return false;
+    return c === "alene" || Boolean(alphaTesterCommands[c]) || c === "greedisgood" || c === "canttouchme" || c === "beginner" || c.startsWith("add ");
 }
 
 function isForbiddenMultiplayerCommand(command) {
     const c = String(command || "").trim().toLowerCase();
     return ["endwave", "waveskip", "killall", "reset"].some(x => c === x || c.startsWith(x + " "));
+}
+
+function runAllowedAdminMultiplayerConsoleCommand(command) {
+    const c = String(command || "").trim().toLowerCase();
+    if (alphaTesterCommands[c]) {
+        activateAlphaTesterBadge(alphaTesterCommands[c]);
+        showCenterMessage("ALPHA TESTER", 900);
+        updateHud(true);
+        sendMultiplayerState(true);
+        return;
+    }
+    if (c === "alene") {
+        activateDeveloperBadge("Alene");
+        showCenterMessage("DEVELOPER", 900);
+        updateHud(true);
+        sendMultiplayerState(true);
+    }
+}
+
+function runMultiplayerAddCommand(rawText) {
+    const match = String(rawText || "").trim().match(/^add\s+(.+?)\s+([0-9][0-9.,]*)$/i);
+    if (!match) {
+        appendMultiplayerChatMessage({ roomId: multiplayer.roomId, type: "message", name: "Sistema", color: "#ff9f43", text: "Uso: add nombre cantidad" });
+        return;
+    }
+    const targetName = match[1].trim().slice(0, 18);
+    const amount = Math.max(0, Math.floor(Number(match[2].replace(/[.,]/g, "")) || 0));
+    if (!targetName || amount <= 0) {
+        appendMultiplayerChatMessage({ roomId: multiplayer.roomId, type: "message", name: "Sistema", color: "#ff9f43", text: "Uso: add nombre cantidad" });
+        return;
+    }
+    if (namesMatchLoosely(getMultiplayerDisplayName(), targetName) || namesMatchLoosely(playerName, targetName)) {
+        coins = Math.min(Number.MAX_SAFE_INTEGER, coins + amount);
+        disqualifyRunFromLeaderboard("mp-add");
+        showCenterMessage(`+${formatMoney(amount)} monedas`, 950);
+        updateHud(true);
+        sendMultiplayerState(true);
+    }
+    const marker = `§ADD§${targetName}§${amount}`;
+    multiplayer.socket.emit("chatMessage", { roomId: multiplayer.roomId, text: marker });
+}
+
+function handleIncomingMultiplayerSystemCommand(data = {}) {
+    const text = String(data.text || "");
+    if (!text.startsWith("§ADD§")) return false;
+    const parts = text.split("§");
+    const targetName = String(parts[2] || "").trim();
+    const amount = Math.max(0, Math.floor(Number(parts[3]) || 0));
+    const senderIsAdmin = isNameMultiplayerAdmin(data.name);
+    if (!senderIsAdmin) return true;
+    if (amount > 0 && targetName && !namesMatchLoosely(data.name, getMultiplayerDisplayName()) && (namesMatchLoosely(targetName, getMultiplayerDisplayName()) || namesMatchLoosely(targetName, playerName))) {
+        coins = Math.min(Number.MAX_SAFE_INTEGER, coins + amount);
+        disqualifyRunFromLeaderboard("mp-add-remote");
+        showCenterMessage(`Alene te dio +${formatMoney(amount)} monedas`, 1200);
+        updateHud(true);
+        sendMultiplayerState(true);
+    }
+    appendMultiplayerChatMessage({ roomId: data.roomId, type: "message", name: "Sistema", color: "#ffd166", text: `${data.name || "Alene"} dio ${formatMoney(amount)} monedas a ${targetName}.` });
+    return true;
 }
 
 function runMultiplayerChatCommand(command) {
@@ -3561,10 +3781,19 @@ function runMultiplayerChatCommand(command) {
 function renderRoomPlayers(players = []) {
     if (!roomPlayersList) return;
     if (roomStatusText) roomStatusText.textContent = `${players.length}/5 jugador(es) en la sala.`;
-    roomPlayersList.innerHTML = players.map(p => {
-        const color = escapeHtml(p.color || '#73ff9f');
-        return `<li><span><i class="mpColorDot" style="background:${color}"></i>${escapeHtml(p.name || "Jugador")}</span><small>${p.host ? "Host" : "Invitado"}</small></li>`;
-    }).join("");
+    const slotHtml = [];
+    for (let i = 0; i < 5; i++) {
+        const p = players[i];
+        if (p) {
+            const color = escapeHtml(p.color || '#73ff9f');
+            const role = getMultiplayerNameRole(p.name || "");
+            const roleBadge = role.developer ? '<small class="roomRoleBadge dev">DEVELOPER</small>' : (role.alphaTester ? '<small class="roomRoleBadge alpha">ALPHA TESTER</small>' : '');
+            slotHtml.push(`<li class="filledSlot"><span><i class="mpColorDot" style="background:${color}"></i>${escapeHtml(p.name || "Jugador")}${roleBadge}</span><small>${p.host ? "Host" : "Invitado"}</small></li>`);
+        } else {
+            slotHtml.push(`<li class="emptySlot"><span><i class="mpColorDot emptyDot"></i>Slot libre</span><small>Esperando...</small></li>`);
+        }
+    }
+    roomPlayersList.innerHTML = slotHtml.join("");
 }
 
 function escapeHtml(value) {
@@ -3995,6 +4224,9 @@ function startMultiplayerGame() {
     }
     selectedGameMode = "multiplayer";
     multiplayer.enabled = true;
+    multiplayer.spectating = false;
+    multiplayer.deathReported = false;
+    multiplayer.deathInfo = null;
     gameSpeed = clampMultiplayerSpeed(multiplayer.roomSpeed || gameSpeed || 1);
     updateMultiplayerSpeedUI();
     startGame();
@@ -4008,6 +4240,9 @@ function sendMultiplayerState(force = false) {
     multiplayer.socket.emit("playerState", {
         roomId: multiplayer.roomId,
         name: player.name || playerName || "Jugador",
+        developer: Boolean(getMultiplayerNameRole(player.name || playerName).developer),
+        alphaTester: Boolean(getMultiplayerNameRole(player.name || playerName).alphaTester),
+        title: getMultiplayerNameRole(player.name || playerName).title,
         x: player.x,
         y: player.y,
         hp: player.hp,
@@ -4029,54 +4264,212 @@ function sendMultiplayerState(force = false) {
         wave,
         score,
         coins,
-        towerSlots: towerSlotLimit
+        towerSlots: towerSlotLimit,
+        alive: Boolean(player.hp > 0 && !multiplayer.spectating),
+        spectating: Boolean(multiplayer.spectating),
+        pageVisible: !document.hidden,
+        lastDeathCause: multiplayer.deathInfo?.cause || lastDeathCause || "",
+        diedAtWave: multiplayer.deathInfo?.wave || wave
     });
+}
+
+function tintPlayerSpriteForColor(color) {
+    const key = String(color || "#ffffff");
+    if (!tintPlayerSpriteForColor.cache) tintPlayerSpriteForColor.cache = new Map();
+    if (tintPlayerSpriteForColor.cache.has(key)) return tintPlayerSpriteForColor.cache.get(key);
+    const base = playerSprites.idle;
+    if (!base || !base.complete || !base.naturalWidth) return null;
+    const canvasCopy = document.createElement("canvas");
+    canvasCopy.width = base.naturalWidth;
+    canvasCopy.height = base.naturalHeight;
+    const cctx = canvasCopy.getContext("2d");
+    cctx.imageSmoothingEnabled = false;
+    cctx.drawImage(base, 0, 0);
+    const target = getCssColorRgb(key);
+    const img = cctx.getImageData(0, 0, canvasCopy.width, canvasCopy.height);
+    const data = img.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const a = data[i + 3];
+        if (a <= 10) continue;
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const brightness = (r + g + b) / 3;
+        const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+        // Teñimos principalmente ropa/zonas medias y mantenemos ojos/sombras fuertes.
+        if (brightness > 35 && brightness < 245 && saturation > 12) {
+            const shade = Math.max(0.38, Math.min(1.12, brightness / 150));
+            data[i] = Math.round(target.r * shade);
+            data[i + 1] = Math.round(target.g * shade);
+            data[i + 2] = Math.round(target.b * shade);
+        }
+    }
+    cctx.putImageData(img, 0, 0);
+    tintPlayerSpriteForColor.cache.set(key, canvasCopy);
+    return canvasCopy;
+}
+
+function drawRemotePlayerSpriteTinted(remote, color) {
+    const img = tintPlayerSpriteForColor(color) || playerSprites.idle;
+    const frameData = getSpriteFrameData(img);
+    if (!frameData) return false;
+    const { frameWidth, frameHeight, columns, rows } = frameData;
+    const moving = Boolean(remote.isMoving);
+    const fps = moving ? 10 : 4;
+    const lastX = Number(remote.lastMoveX) || 0;
+    const lastY = Number(remote.lastMoveY) || 0;
+    let row = 0;
+    if (Math.abs(lastX) > Math.abs(lastY) && rows >= 2) row = 1;
+    if (lastY < -0.25 && rows >= 3) row = 2;
+    const frameInRow = moving ? Math.floor(getGameTime() / (1000 / fps)) % Math.max(1, columns) : 0;
+    const frameIndex = row * columns + frameInRow;
+    const sx = (frameIndex % columns) * frameWidth;
+    const sy = Math.floor(frameIndex / columns) * frameHeight;
+    const shouldFlip = lastX < -0.15;
+    ctx.save();
+    ctx.translate(Number(remote.x), Number(remote.y));
+    if (shouldFlip) ctx.scale(-1, 1);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, sx, sy, frameWidth, frameHeight, -PLAYER_SPRITE_DRAW_SIZE / 2, -PLAYER_SPRITE_DRAW_SIZE / 2, PLAYER_SPRITE_DRAW_SIZE, PLAYER_SPRITE_DRAW_SIZE);
+    ctx.restore();
+    return true;
 }
 
 function drawMultiplayerPlayers() {
     if (!multiplayer.enabled || !multiplayer.players || !multiplayer.socket) return;
     const myId = multiplayer.socket.id;
     Object.values(multiplayer.players).forEach(remote => {
-        if (!remote || remote.id === myId) return;
+        if (!remote || remote.id === myId || remote.spectating || remote.hp <= 0) return;
         const x = Number(remote.x);
         const y = Number(remote.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const color = getMultiplayerPlayerColor(remote);
 
-        const spriteDrawn = drawRemotePlayerSprite(remote);
+        const spriteDrawn = drawRemotePlayerSpriteTinted(remote, color);
         ctx.save();
         ctx.translate(x, y);
         if (!spriteDrawn) {
-            ctx.fillStyle = `${getMultiplayerPlayerColor(remote)}33`;
+            ctx.fillStyle = color;
             ctx.beginPath();
-            ctx.arc(0, 0, 23, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = getMultiplayerPlayerColor(remote);
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(0, 0, 18, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.fillStyle = getMultiplayerPlayerColor(remote);
-            ctx.beginPath();
-            ctx.arc(0, 0, 11, 0, Math.PI * 2);
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
             ctx.fill();
         }
-        ctx.strokeStyle = getMultiplayerPlayerColor(remote);
-        ctx.lineWidth = 3;
+        // Sin aro grande alrededor del sprite: queda más limpio visualmente.
+        ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(0, 0, 24, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.arc(0, 23, 4, 0, Math.PI * 2);
+        ctx.fill();
         const label = String(remote.name || "Jugador").slice(0, 18);
-        ctx.fillStyle = "white";
-        ctx.font = "bold 13px Arial";
+        const role = getMultiplayerNameRole(label);
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
-        ctx.strokeStyle = "rgba(0,0,0,0.9)";
-        ctx.lineWidth = 4;
-        ctx.strokeText(label, 0, -35);
-        ctx.fillText(label, 0, -35);
+        if (role.developer) {
+            drawDeveloperName(label, 0, -35);
+        } else if (role.alphaTester) {
+            drawAlphaTesterName(label, 0, -35);
+        } else {
+            ctx.fillStyle = "white";
+            ctx.font = "bold 13px Arial";
+            ctx.strokeStyle = "rgba(0,0,0,0.9)";
+            ctx.lineWidth = 4;
+            ctx.strokeText(label, 0, -35);
+            ctx.fillText(label, 0, -35);
+        }
         ctx.restore();
     });
 }
+
+function getAliveMultiplayerPlayersForSpectate() {
+    if (!multiplayer.players) return [];
+    const myId = getLocalMultiplayerId();
+    return Object.values(multiplayer.players).filter(p => p && p.id !== myId && !p.spectating && Number(p.hp) > 0 && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
+}
+
+function chooseNextSpectatorTarget() {
+    const alive = getAliveMultiplayerPlayersForSpectate();
+    if (!alive.length) {
+        multiplayer.spectatorTargetId = "";
+        if (spectatorStatusText) spectatorStatusText.textContent = "No hay jugadores vivos para observar.";
+        return null;
+    }
+    const idx = alive.findIndex(p => p.id === multiplayer.spectatorTargetId);
+    const next = alive[(idx + 1 + alive.length) % alive.length];
+    multiplayer.spectatorTargetId = next.id;
+    if (spectatorStatusText) spectatorStatusText.textContent = `Observando a ${next.name || "Jugador"}.`;
+    return next;
+}
+
+function getSpectatorTargetPlayer() {
+    if (!multiplayer.spectating) return null;
+    const current = multiplayer.players?.[multiplayer.spectatorTargetId];
+    if (current && !current.spectating && Number(current.hp) > 0) return current;
+    return chooseNextSpectatorTarget();
+}
+
+function enterSpectatorMode() {
+    multiplayer.spectating = true;
+    isPaused = false;
+    if (player) player.hp = 0;
+    gameOverScreen?.classList.add("hidden");
+    if (nextSpectatorTargetBtn) nextSpectatorTargetBtn.classList.remove("hidden");
+    closeShop();
+    waveSummaryPanel?.classList.add("hidden");
+    chooseNextSpectatorTarget();
+    sendMultiplayerState(true);
+    showCenterMessage("Modo espectador", 900);
+}
+
+function leaveMultiplayerToMainMenu() {
+    multiplayer.spectating = false;
+    multiplayer.deathReported = false;
+    multiplayer.deathInfo = null;
+    if (multiplayer.socket && multiplayer.inRoom) multiplayer.socket.emit("leaveRoom");
+    multiplayer.inRoom = false;
+    multiplayer.roomId = "";
+    multiplayer.hostId = "";
+    multiplayer.players = {};
+    multiplayer.enabled = false;
+    selectedGameMode = "single";
+    gameStarted = false;
+    gameRunning = false;
+    isPaused = false;
+    stopMusicAndReset();
+    gameOverScreen?.classList.add("hidden");
+    showMainMenuSection("main");
+    gameArea.classList.add("hidden");
+    menu.classList.remove("hidden");
+    updateMultiplayerSpeedUI();
+}
+
+function handleMultiplayerLocalDeath() {
+    if (multiplayer.deathReported) return;
+    multiplayer.deathReported = true;
+    multiplayer.spectating = false;
+    multiplayer.deathInfo = {
+        wave,
+        score,
+        cause: lastDeathCause || "desconocido"
+    };
+    gameRunning = false;
+    waveInProgress = false;
+    isPaused = false;
+    stopMusicAndReset();
+    deathMessageText.textContent = `Caíste en la oleada ${wave}. Te mató: ${multiplayer.deathInfo.cause}.`;
+    finalScoreText.textContent = formatCompactNumber(score);
+    bestScoreText.textContent = formatCompactNumber(bestScore);
+    if (newRunBtn) newRunBtn.classList.add("hidden");
+    if (spectateRunBtn) spectateRunBtn.classList.remove("hidden");
+    if (leaveAfterDeathBtn) leaveAfterDeathBtn.classList.remove("hidden");
+    if (nextSpectatorTargetBtn) nextSpectatorTargetBtn.classList.add("hidden");
+    if (spectatorStatusText) spectatorStatusText.textContent = "Podés salir al menú o quedarte mirando la run.";
+    if (newRunBtn) newRunBtn.classList.remove("hidden");
+    if (spectateRunBtn) spectateRunBtn.classList.add("hidden");
+    if (leaveAfterDeathBtn) leaveAfterDeathBtn.classList.add("hidden");
+    if (nextSpectatorTargetBtn) nextSpectatorTargetBtn.classList.add("hidden");
+    gameOverScreen.classList.remove("hidden");
+    closeShop();
+    waveSummaryPanel.classList.add("hidden");
+    sendMultiplayerState(true);
+}
+
 
 function drawMultiplayerBadge() {
     if (!multiplayer.enabled || !multiplayer.inRoom) return;
@@ -4085,8 +4478,8 @@ function drawMultiplayerBadge() {
     ctx.fillStyle = "rgba(0,0,0,0.68)";
     ctx.strokeStyle = "rgba(115,255,159,0.6)";
     ctx.lineWidth = 1;
-    const role = isMultiplayerHost() ? "HOST" : "CLIENTE";
-    const text = `LAN · ${role} · Sala ${multiplayer.roomId || "----"}`;
+    const role = isMultiplayerHost() ? "SIM" : (multiplayer.spectating ? "ESPECTADOR" : "CLIENTE");
+    const text = `ONLINE · ${role} · Sala ${multiplayer.roomId || "----"}`;
     ctx.font = "12px Arial";
     const width = Math.ceil(ctx.measureText(text).width) + 24;
     ctx.beginPath();
@@ -4103,6 +4496,7 @@ function drawMultiplayerBadge() {
 function startGame() {
     if (selectedGameMode === "multiplayer") {
         playerName = getMultiplayerDisplayName();
+        applyMultiplayerRoleToLocalPlayer();
         if (playerNameInput) playerNameInput.value = playerName;
         localStorage.setItem("ardentPlayerName", playerName);
         multiplayer.enabled = true;
@@ -6600,6 +6994,10 @@ async function submitLeaderboardScore() {
 }
 
 function endRun() {
+    if (multiplayer.enabled) {
+        handleMultiplayerLocalDeath();
+        return;
+    }
     clearSavedRun();
     stopMusicAndReset();
     hasActiveRun = false;
@@ -7058,6 +7456,7 @@ function drawBuildPreview() {
 }
 
 function drawPlayer() {
+    if (multiplayer.enabled && (multiplayer.spectating || player.hp <= 0)) return;
     if (player.immortal) {
         ctx.strokeStyle = "rgba(255, 226, 138, 0.8)";
         ctx.lineWidth = 3;
@@ -7078,6 +7477,14 @@ function drawPlayer() {
         ctx.fillStyle = "black";
         ctx.font = "14px Arial";
         ctx.fillText("P", player.x - 5, player.y + 5);
+    }
+
+    if (multiplayer.enabled) {
+        const myColor = getMultiplayerPlayerColor(getLocalMultiplayerId()) || "#ffffff";
+        ctx.fillStyle = myColor;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y + 23, 4, 0, Math.PI * 2);
+        ctx.fill();
     }
 
     if (player.name) {
@@ -8338,7 +8745,15 @@ function drawMinimap() {
         ctx.arc(x + wx * sx, y + wy * sy, r, 0, Math.PI * 2);
         ctx.fill();
     };
-    if (player) dot(player.x, player.y, "#66d9ff", 4);
+    if (player && !(multiplayer.enabled && multiplayer.spectating)) dot(player.x, player.y, multiplayer.enabled ? "#ffffff" : "#66d9ff", multiplayer.enabled ? 3.2 : 4);
+    if (multiplayer.enabled && multiplayer.players) {
+        Object.values(multiplayer.players).forEach(mp => {
+            if (!mp || mp.id === getLocalMultiplayerId() || mp.spectating || mp.hp <= 0) return;
+            dot(Number(mp.x), Number(mp.y), getMultiplayerPlayerColor(mp), 3.2);
+        });
+        const target = getSpectatorTargetPlayer();
+        if (target) dot(Number(target.x), Number(target.y), "#ffffff", 4.2);
+    }
     enemies.forEach(e => dot(e.x, e.y, e.isBoss ? "#ff55ff" : "#ff3333", e.isBoss ? 3.8 : 2));
     towers.forEach(t => dot(t.x, t.y, "#ffffff", 1.7));
     (traps || []).forEach(trap => dot(trap.x, trap.y, trap.type === "snare" ? "#9be7ff" : "#ff6b6b", 1.4));
@@ -8410,7 +8825,7 @@ function gameLoop() {
     }
 
     const now = getGameTime();
-    const multiplayerGuest = isMultiplayerGuest();
+    const multiplayerGuest = isMultiplayerGuest() || Boolean(multiplayer.enabled && multiplayer.spectating);
     if (multiplayerGuest && multiplayer.latestHostState) applyHostAuthoritativeState(multiplayer.latestHostState);
 
     if (waveActive && !multiplayerGuest) {
@@ -8437,7 +8852,7 @@ function gameLoop() {
         // y construir mientras corre el contador hacia la próxima oleada.
         updatePlayerMovement();
         regenerateBarricades();
-    } else if (multiplayerGuest && gameStarted && !isPaused) {
+    } else if (multiplayerGuest && gameStarted && !isPaused && !multiplayer.spectating) {
         // En cliente multiplayer, el mundo lo manda el host. Este jugador mueve
         // su personaje y el host genera sus disparos reales.
         updatePlayerMovement();
@@ -8538,15 +8953,8 @@ function runConsoleCommand(rawCommand) {
     appendConsoleLog(`> ${command}`);
 
     if (multiplayer.enabled) {
-        if (isAllowedMultiplayerChatCommand(command)) {
-            runMultiplayerChatCommand(command);
-            if (multiplayer.socket && multiplayer.inRoom) multiplayer.socket.emit("chatCommand", { roomId: multiplayer.roomId, command });
-        } else if (isForbiddenMultiplayerCommand(command)) {
-            appendConsoleLog("Ese comando está bloqueado en multiplayer.");
-            showCenterMessage("COMANDO BLOQUEADO EN MULTI", 900);
-        } else {
-            appendConsoleLog("En multiplayer usá el chat. Comandos permitidos: greedisgood, canttouchme, beginner.");
-        }
+        appendConsoleLog("En multiplayer usá el chat para comandos y mensajes.");
+        if (multiplayer.inRoom) handleMultiplayerChatCommand(command, rawCommand);
         return;
     }
 
@@ -10599,8 +11007,19 @@ autoModeBtn.addEventListener("click", () => {
 
 if (singlePlayerModeBtn) singlePlayerModeBtn.addEventListener("click", showSinglePlayerMenu);
 if (multiPlayerModeBtn) multiPlayerModeBtn.addEventListener("click", showMultiplayerMenu);
-if (optionsModeBtn && modeOptionsPanel) optionsModeBtn.addEventListener("click", () => modeOptionsPanel.classList.toggle("hidden"));
+if (optionsModeBtn && modeOptionsPanel) optionsModeBtn.addEventListener("click", () => {
+    modeOptionsPanel.classList.toggle("hidden");
+    if (modeCreditsPanel) modeCreditsPanel.classList.add("hidden");
+});
+if (creditsModeBtn && modeCreditsPanel) creditsModeBtn.addEventListener("click", () => {
+    modeCreditsPanel.classList.toggle("hidden");
+    if (modeOptionsPanel) modeOptionsPanel.classList.add("hidden");
+});
 if (backToModeFromMultiplayerBtn) backToModeFromMultiplayerBtn.addEventListener("click", showModeMenu);
+if (openJoinRoomPanelBtn) openJoinRoomPanelBtn.addEventListener("click", showMultiplayerJoinPanel);
+if (backToMpHomeBtn) backToMpHomeBtn.addEventListener("click", showMultiplayerHomePanel);
+if (copyRoomCodeBtn) copyRoomCodeBtn.addEventListener("click", copyCurrentRoomCode);
+if (leaveRoomFromLobbyBtn) leaveRoomFromLobbyBtn.addEventListener("click", leaveMultiplayerRoomToHome);
 if (createRoomBtn) createRoomBtn.addEventListener("click", createMultiplayerRoom);
 if (joinRoomBtn) joinRoomBtn.addEventListener("click", joinMultiplayerRoom);
 if (roomCodeInput) roomCodeInput.addEventListener("keydown", event => { if (event.key === "Enter") joinMultiplayerRoom(); });
@@ -10684,3 +11103,12 @@ bestScoreMenuText.textContent = formatCompactNumber(bestScore);
 createDefaultState();
 applyAudioSettingsToUI();
 draw();
+
+if (spectateRunBtn) spectateRunBtn.addEventListener("click", enterSpectatorMode);
+if (leaveAfterDeathBtn) leaveAfterDeathBtn.addEventListener("click", leaveMultiplayerToMainMenu);
+if (nextSpectatorTargetBtn) nextSpectatorTargetBtn.addEventListener("click", chooseNextSpectatorTarget);
+
+document.addEventListener("visibilitychange", () => {
+    multiplayer.pageVisible = !document.hidden;
+    if (multiplayer.enabled) sendMultiplayerState(true);
+});

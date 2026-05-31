@@ -2062,3 +2062,292 @@ textarea {
     border-color: rgba(115, 255, 159, 0.74);
     box-shadow: 0 0 0 2px rgba(115, 255, 159, 0.12);
 }
+
+/* ===== V2 Online: menú estilo tarjeta + flujo multiplayer limpio ===== */
+.fantasyMainMenu {
+    width: min(94vw, 430px);
+    margin: 28px auto 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+.fantasyFrame {
+    position: relative;
+    padding: 24px 24px 22px;
+    border-radius: 8px;
+    color: #4b321e;
+    background:
+        linear-gradient(135deg, #ffbf56 0 4%, transparent 4% 96%, #ffbf56 96% 100%),
+        linear-gradient(45deg, #ffbf56 0 4%, transparent 4% 96%, #ffbf56 96% 100%),
+        linear-gradient(180deg, #fff1c8, #ffe1a4);
+    border: 7px solid #ffcb63;
+    box-shadow: 0 22px 55px rgba(0, 0, 0, 0.38), inset 0 0 0 2px rgba(255, 255, 255, 0.33);
+}
+
+.fantasyFrame h2 {
+    margin: 0 0 8px;
+    color: #56351f;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.55);
+    letter-spacing: 0.2px;
+}
+
+.fantasyFrame h3 {
+    margin: 8px 0 10px;
+    color: #5d351f;
+}
+
+.fantasyFrame .modeLead,
+.fantasyFrame .modeHint,
+.fantasyFrame p,
+.fantasyFrame small {
+    color: #6c4b2d;
+}
+
+.verticalMenuButtons {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    margin: 14px auto 10px;
+    max-width: 290px;
+}
+
+.menuChoiceButton {
+    min-height: 44px;
+    padding: 8px 14px;
+    font-size: 19px;
+    border-radius: 4px;
+    background: rgba(255, 238, 190, 0.55);
+    color: #59381f;
+    box-shadow: none;
+    border: 2px solid transparent;
+    font-weight: 800;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+}
+
+.menuChoiceButton:hover,
+.menuChoiceButton:focus-visible {
+    background: #ff9f43;
+    color: white;
+    border-color: #ff392e;
+    transform: none;
+    outline: none;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.18);
+}
+
+.menuChoiceButton.multiplayerButton {
+    background: linear-gradient(180deg, #ffa858, #ff8f37);
+    color: #fff;
+}
+
+.menuChoiceButton.multiplayerButton:hover,
+.menuChoiceButton.multiplayerButton:focus-visible {
+    background: linear-gradient(180deg, #ffb965, #ff8d35);
+    border-color: #ff392e;
+}
+
+.menuChoiceButton.secondaryModeButton {
+    background: rgba(255, 238, 190, 0.48);
+}
+
+.fantasySubPanel,
+.mpFlowPanel,
+.fantasyFrame .roomPanel {
+    margin-top: 14px;
+    background: rgba(255, 247, 220, 0.68);
+    border: 2px solid rgba(143, 86, 34, 0.25);
+    border-radius: 10px;
+    padding: 14px;
+    color: #4b321e;
+}
+
+.mpNameBox {
+    max-width: 300px;
+    margin: 0 auto 12px;
+    text-align: left;
+}
+
+.mpNameBox label,
+.fantasyFrame .playerNameBox label {
+    display: block;
+    color: #5d351f;
+    font-weight: 800;
+    margin-bottom: 5px;
+}
+
+.mpNameHint {
+    display: block;
+    margin-top: 5px;
+    line-height: 1.25;
+}
+
+.fantasyFrame input,
+.fantasyFrame select {
+    width: 100%;
+    padding: 11px 12px;
+    border-radius: 8px;
+    border: 2px solid rgba(119, 70, 27, 0.35);
+    background: rgba(255, 255, 245, 0.78);
+    color: #412717;
+    font-weight: 700;
+    outline: none;
+}
+
+.fantasyFrame input:focus,
+.fantasyFrame select:focus {
+    border-color: #ff9136;
+    box-shadow: 0 0 0 3px rgba(255, 145, 54, 0.18);
+}
+
+.compactRoomSettings {
+    max-width: 300px;
+    margin: 12px auto;
+    background: rgba(255, 247, 220, 0.48);
+    border-color: rgba(143, 86, 34, 0.25);
+}
+
+.mpActionButtons .modeBigButton {
+    min-height: 48px;
+}
+
+.menuBackButton {
+    margin-top: 8px;
+    background: rgba(64, 43, 29, 0.72);
+    border-color: rgba(255,255,255,0.16);
+}
+
+.menuBackButton:hover {
+    background: rgba(80, 53, 35, 0.9);
+}
+
+.joinRoomColumn {
+    display: grid;
+    gap: 10px;
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+.joinRoomColumn button,
+.roomPanelActions button,
+#startMultiplayerGameBtn,
+#createRoomBtn,
+#joinRoomBtn {
+    padding: 11px 16px;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #ffad52, #ff8f37);
+    border: 1px solid rgba(94, 51, 20, 0.16);
+    color: #fff;
+    font-weight: 900;
+}
+
+.roomSlotsList {
+    max-width: 330px;
+}
+
+.roomSlotsList li {
+    align-items: center;
+    background: rgba(255,255,245,0.55);
+    border-color: rgba(143, 86, 34, 0.22);
+    color: #4b321e;
+}
+
+.roomSlotsList li.emptySlot {
+    opacity: 0.68;
+    border-style: dashed;
+}
+
+.emptyDot {
+    background: transparent !important;
+    border: 1px solid rgba(90, 55, 30, 0.45);
+    box-shadow: none;
+}
+
+.roomRoleBadge {
+    display: inline-block;
+    margin-left: 7px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 900;
+    vertical-align: middle;
+}
+
+.roomRoleBadge.dev {
+    color: #fff;
+    background: linear-gradient(90deg, #d47d00, #ff3838);
+}
+
+.roomRoleBadge.alpha {
+    color: white;
+    background: linear-gradient(90deg, #ff3d80, #7655ff, #22c7ff);
+}
+
+.roomCodeCard {
+    display: grid;
+    gap: 6px;
+    justify-items: center;
+    max-width: 270px;
+    margin: 14px auto;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 245, 0.62);
+    border: 2px solid rgba(143, 86, 34, 0.2);
+}
+
+.roomCodeCard span {
+    color: #6c4b2d;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.roomCodeCard strong {
+    color: #ff6e2f;
+    font-size: 28px;
+    letter-spacing: 3px;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.roomPanelActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    max-width: 270px;
+    margin: 0 auto;
+}
+
+/* Single player panel más limpio */
+#menu.hidden { display: none !important; }
+#menu:not(.hidden) {
+    width: min(94vw, 430px);
+    margin: 28px auto 0;
+    padding: 24px;
+    border-radius: 8px;
+    color: #4b321e;
+    background: linear-gradient(180deg, #fff1c8, #ffe1a4);
+    border: 7px solid #ffcb63;
+    box-shadow: 0 22px 55px rgba(0,0,0,0.38);
+}
+
+#menu:not(.hidden) h2 { color: #56351f; }
+#menu:not(.hidden) p { color: #6c4b2d; }
+#menu:not(.hidden) .playerNameBox { max-width: 300px; margin: 14px auto; text-align: left; }
+#menu:not(.hidden) .playerNameBox label { color: #5d351f; font-weight: 800; }
+#menu:not(.hidden) #startGameBtn {
+    min-width: 220px;
+    background: linear-gradient(180deg, #ffad52, #ff8f37);
+    font-weight: 900;
+}
+
+
+.spectatorStatusText {
+    color: #cfcfcf;
+    font-size: 13px;
+    margin: 8px 0 0;
+}
+
+#spectateRunBtn,
+#nextSpectatorTargetBtn,
+#leaveAfterDeathBtn {
+    margin: 6px;
+}

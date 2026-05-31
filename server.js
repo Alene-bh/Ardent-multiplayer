@@ -74,7 +74,12 @@ function getRoomPlayers(roomId) {
     firing: player.firing,
     color: player.color,
     coins: player.coins || 0,
-    towerSlots: player.towerSlots || 12
+    towerSlots: player.towerSlots || 12,
+    alive: player.alive !== false,
+    spectating: Boolean(player.spectating),
+    pageVisible: player.pageVisible !== false,
+    lastDeathCause: player.lastDeathCause || '',
+    diedAtWave: player.diedAtWave || player.wave || 1
   }));
 }
 
@@ -173,7 +178,13 @@ io.on('connection', socket => {
     player.score = clampNumber(state?.score, 0, 999999999, player.score);
     player.coins = clampNumber(state?.coins, 0, 999999999, player.coins || 0);
     player.towerSlots = clampNumber(state?.towerSlots, 1, 99, player.towerSlots || 12);
+    player.spectating = Boolean(state?.spectating);
+    player.pageVisible = state?.pageVisible !== false;
+    player.alive = state?.alive !== false && player.hp > 0 && !player.spectating;
+    player.lastDeathCause = String(state?.lastDeathCause || player.lastDeathCause || '').slice(0, 80);
+    player.diedAtWave = clampNumber(state?.diedAtWave, 1, 999999, player.diedAtWave || player.wave || 1);
     player.updatedAt = Date.now();
+    maybeElectRoomHost(roomId);
   });
 
   socket.on('hostGameState', payload => {
@@ -405,8 +416,48 @@ function makePlayer(id, name, color = '#73ff9f') {
     shieldCharges: 0,
     wave: 1,
     score: 0,
+    alive: true,
+    spectating: false,
+    pageVisible: true,
+    lastDeathCause: '',
+    diedAtWave: 1,
     updatedAt: Date.now()
   };
+}
+
+
+function maybeElectRoomHost(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  const current = room.players.get(room.hostId);
+  const now = Date.now();
+  const currentOk = current && current.alive !== false && !current.spectating && current.pageVisible !== false && now - (current.updatedAt || 0) < 9000;
+  if (currentOk) return;
+
+  const candidates = [...room.players.values()]
+    .filter(p => p && p.alive !== false && !p.spectating && p.pageVisible !== false && now - (p.updatedAt || 0) < 12000)
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  const fallback = [...room.players.values()]
+    .filter(p => p && p.alive !== false && !p.spectating)
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  const next = candidates[0] || fallback[0] || room.players.values().next().value;
+  const nextId = next?.id || '';
+  if (nextId && nextId !== room.hostId) {
+    room.hostId = nextId;
+    io.to(roomId).emit('chatMessage', {
+      roomId,
+      type: 'message',
+      playerId: 'server',
+      name: 'Sistema',
+      color: '#ffd166',
+      text: `La simulación pasó a ${next.name || 'otro jugador'} para que la run no se frene.`
+    });
+    emitRoomUpdate(roomId);
+  } else if (!nextId) {
+    room.hostId = '';
+  }
 }
 
 function leaveCurrentRoom(socket) {
@@ -417,9 +468,9 @@ function leaveCurrentRoom(socket) {
     room.players.delete(socket.id);
     socket.leave(roomId);
     if (room.hostId === socket.id) {
-      const nextHost = room.players.keys().next().value;
-      room.hostId = nextHost || '';
+      room.hostId = '';
     }
+    maybeElectRoomHost(roomId);
     emitRoomUpdate(roomId);
     cleanEmptyRoom(roomId);
   }
@@ -433,7 +484,10 @@ function clampNumber(value, min, max, fallback) {
 }
 
 setInterval(() => {
-  for (const roomId of rooms.keys()) emitSnapshot(roomId);
+  for (const roomId of rooms.keys()) {
+    maybeElectRoomHost(roomId);
+    emitSnapshot(roomId);
+  }
 }, 1000 / 15);
 
 server.listen(PORT, '0.0.0.0', () => {

@@ -12,60 +12,92 @@
     <div id="gameWrapper">
         <h1>Ardent Tower Defense</h1>
 
-        <div id="modeMenu" class="modeMenu">
-            <h2>Elegí modo de juego</h2>
-            <p class="modeLead">Jugá la versión clásica o conectate por LAN/Radmin con salas.</p>
+        <div id="modeMenu" class="modeMenu fantasyMainMenu">
+            <div class="fantasyFrame">
+                <h2>Ardent Tower Defense</h2>
+                <p class="modeLead">Elegí cómo querés jugar.</p>
 
-            <div class="modeButtonGrid">
-                <button id="singlePlayerModeBtn" type="button" class="modeBigButton">Un jugador</button>
-                <button id="multiPlayerModeBtn" type="button" class="modeBigButton multiplayerButton">Multijugador LAN</button>
-                <button id="optionsModeBtn" type="button" class="modeBigButton secondaryModeButton">Opciones</button>
-            </div>
+                <div class="modeButtonGrid verticalMenuButtons">
+                    <button id="singlePlayerModeBtn" type="button" class="modeBigButton menuChoiceButton">Single Player</button>
+                    <button id="multiPlayerModeBtn" type="button" class="modeBigButton menuChoiceButton multiplayerButton">Multi Player</button>
+                    <button id="optionsModeBtn" type="button" class="modeBigButton menuChoiceButton secondaryModeButton">Options</button>
+                    <button id="creditsModeBtn" type="button" class="modeBigButton menuChoiceButton secondaryModeButton">Credits</button>
+                </div>
 
-            <div id="modeOptionsPanel" class="modeOptionsPanel hidden">
-                <h3>Opciones</h3>
-                <p>Las opciones completas de audio, visual y controles siguen disponibles dentro del menú de un jugador y pausa.</p>
-                <p class="modeHint">Tip: para multiplayer LAN abrí el juego desde la IP de Radmin del host, por ejemplo <strong>http://26.xx.xx.xx:3000</strong>.</p>
+                <div id="modeOptionsPanel" class="modeOptionsPanel hidden fantasySubPanel">
+                    <h3>Opciones</h3>
+                    <p><strong>Controles:</strong> WASD para moverte, click/espacio para disparar, 1-6 para habilidades.</p>
+                    <p><strong>Multiplayer:</strong> Enter abre chat, Enter envía, Escape sale del chat.</p>
+                    <p class="modeHint">Las opciones finas de audio, visual y controles también aparecen en pausa dentro de la partida.</p>
+                </div>
+
+                <div id="modeCreditsPanel" class="modeOptionsPanel hidden fantasySubPanel">
+                    <h3>Credits</h3>
+                    <p>Juego creado por Alene y compañía tester del abismo.</p>
+                    <p class="modeHint">Gracias a Saki, Ema, Aza, Dylan, Valen y Lal por testear el caos.</p>
+                </div>
             </div>
         </div>
 
-        <div id="multiplayerMenu" class="modeMenu multiplayerMenu hidden">
-            <h2>Multijugador LAN</h2>
-            <p class="modeLead">Creá una sala o unite a una existente. Todos deben estar en la misma red de Radmin.</p>
+        <div id="multiplayerMenu" class="modeMenu multiplayerMenu fantasyMainMenu hidden">
+            <div class="fantasyFrame">
+                <h2>Multi Player</h2>
+                <p class="modeLead">Creá una sala online o unite con código.</p>
 
-            <div class="playerNameBox">
-                <label for="mpPlayerNameInput">Nombre del jugador</label>
-                <input id="mpPlayerNameInput" type="text" maxlength="18" placeholder="Tu nombre" autocomplete="off">
-            </div>
+                <div id="mpHomePanel" class="mpFlowPanel">
+                    <div class="playerNameBox mpNameBox">
+                        <label for="mpPlayerNameInput">Nombre de usuario</label>
+                        <input id="mpPlayerNameInput" type="text" maxlength="18" placeholder="Tu nombre" autocomplete="off">
+                        <small class="mpNameHint">Necesario para multiplayer. Algunos nombres activan insignias especiales.</small>
+                    </div>
 
-            <div class="roomSettingsBox">
-                <label for="mpRoomSpeedSelect">Velocidad de sala</label>
-                <select id="mpRoomSpeedSelect">
-                    <option value="1" selected>x1 · recomendado</option>
-                    <option value="2">x2</option>
-                    <option value="3">x3</option>
-                    <option value="4">x4 máximo</option>
-                </select>
-                <small>En multiplayer se fija al crear la sala para que todos jueguen igual.</small>
-            </div>
+                    <div class="roomSettingsBox compactRoomSettings">
+                        <label for="mpRoomSpeedSelect">Velocidad de sala</label>
+                        <select id="mpRoomSpeedSelect">
+                            <option value="1" selected>x1 · recomendado</option>
+                            <option value="2">x2</option>
+                            <option value="3">x3</option>
+                            <option value="4">x4 máximo</option>
+                        </select>
+                    </div>
 
-            <div class="roomBox">
-                <button id="createRoomBtn" type="button">Crear sala</button>
-                <div class="joinRoomRow">
-                    <input id="roomCodeInput" type="text" maxlength="12" placeholder="Código de sala">
-                    <button id="joinRoomBtn" type="button">Unirse</button>
+                    <div class="modeButtonGrid verticalMenuButtons mpActionButtons">
+                        <button id="createRoomBtn" type="button" class="modeBigButton menuChoiceButton multiplayerButton">Crear sala</button>
+                        <button id="openJoinRoomPanelBtn" type="button" class="modeBigButton menuChoiceButton secondaryModeButton">Unirse a sala</button>
+                    </div>
+
+                    <button id="backToModeFromMultiplayerBtn" type="button" class="smallHudButton menuBackButton">Volver</button>
                 </div>
-            </div>
 
-            <div id="roomPanel" class="roomPanel hidden">
-                <h3>Sala: <span id="currentRoomCodeText">----</span></h3>
-                <p id="roomStatusText">Esperando jugadores...</p>
-                <ul id="roomPlayersList" class="roomPlayersList"></ul>
-                <button id="startMultiplayerGameBtn" type="button">Entrar a la partida</button>
-            </div>
+                <div id="mpJoinPanel" class="mpFlowPanel hidden">
+                    <h3>Unirse a sala</h3>
+                    <p class="modeHint">Pedile el código a quien creó la sala.</p>
+                    <div class="joinRoomRow joinRoomColumn">
+                        <input id="roomCodeInput" type="text" maxlength="12" placeholder="Código de sala">
+                        <button id="joinRoomBtn" type="button">Unirse</button>
+                    </div>
+                    <button id="backToMpHomeBtn" type="button" class="smallHudButton menuBackButton">Volver</button>
+                </div>
 
-            <p id="multiplayerStatusText" class="leaderboardStatus">Servidor no conectado todavía.</p>
-            <button id="backToModeFromMultiplayerBtn" type="button" class="smallHudButton">Volver</button>
+                <div id="roomPanel" class="roomPanel hidden">
+                    <h3>Sala creada</h3>
+                    <p id="roomStatusText">Esperando jugadores...</p>
+                    <ul id="roomPlayersList" class="roomPlayersList roomSlotsList"></ul>
+
+                    <div class="roomCodeCard">
+                        <span>Código de sala</span>
+                        <strong id="currentRoomCodeText">----</strong>
+                        <button id="copyRoomCodeBtn" type="button" class="smallHudButton">Copiar código</button>
+                    </div>
+
+                    <div class="roomPanelActions">
+                        <button id="startMultiplayerGameBtn" type="button">Entrar a la partida</button>
+                        <button id="leaveRoomFromLobbyBtn" type="button" class="smallHudButton menuBackButton">Salir de la sala</button>
+                    </div>
+                </div>
+
+                <p id="multiplayerStatusText" class="leaderboardStatus">Servidor no conectado todavía.</p>
+            </div>
         </div>
 
         <div id="menu" class="hidden">
@@ -578,6 +610,10 @@
                     </div>
 
                     <button id="newRunBtn">Nueva run</button>
+                    <button id="spectateRunBtn" class="hidden">Observar</button>
+                    <button id="nextSpectatorTargetBtn" class="hidden">Cambiar observado</button>
+                    <button id="leaveAfterDeathBtn" class="hidden">Salir al menú principal</button>
+                    <p id="spectatorStatusText" class="spectatorStatusText"></p>
                 </div>
                 <div id="pausePanel" class="overlayPanel hidden">
                     <h2>Pausa</h2>
