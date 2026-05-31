@@ -12,18 +12,74 @@
     <div id="gameWrapper">
         <h1>Ardent Tower Defense</h1>
 
-        <div id="menu">
-            <h2>Defendé la base</h2>
+        <div id="modeMenu" class="modeMenu">
+            <h2>Elegí modo de juego</h2>
+            <p class="modeLead">Jugá la versión clásica o conectate por LAN/Radmin con salas.</p>
+
+            <div class="modeButtonGrid">
+                <button id="singlePlayerModeBtn" type="button" class="modeBigButton">Un jugador</button>
+                <button id="multiPlayerModeBtn" type="button" class="modeBigButton multiplayerButton">Multijugador LAN</button>
+                <button id="optionsModeBtn" type="button" class="modeBigButton secondaryModeButton">Opciones</button>
+            </div>
+
+            <div id="modeOptionsPanel" class="modeOptionsPanel hidden">
+                <h3>Opciones</h3>
+                <p>Las opciones completas de audio, visual y controles siguen disponibles dentro del menú de un jugador y pausa.</p>
+                <p class="modeHint">Tip: para multiplayer LAN abrí el juego desde la IP de Radmin del host, por ejemplo <strong>http://26.xx.xx.xx:3000</strong>.</p>
+            </div>
+        </div>
+
+        <div id="multiplayerMenu" class="modeMenu multiplayerMenu hidden">
+            <h2>Multijugador LAN</h2>
+            <p class="modeLead">Creá una sala o unite a una existente. Todos deben estar en la misma red de Radmin.</p>
+
+            <div class="playerNameBox">
+                <label for="mpPlayerNameInput">Nombre del jugador</label>
+                <input id="mpPlayerNameInput" type="text" maxlength="18" placeholder="Tu nombre" autocomplete="off">
+            </div>
+
+            <div class="roomSettingsBox">
+                <label for="mpRoomSpeedSelect">Velocidad de sala</label>
+                <select id="mpRoomSpeedSelect">
+                    <option value="1" selected>x1 · recomendado</option>
+                    <option value="2">x2</option>
+                    <option value="3">x3</option>
+                    <option value="4">x4 máximo</option>
+                </select>
+                <small>En multiplayer se fija al crear la sala para que todos jueguen igual.</small>
+            </div>
+
+            <div class="roomBox">
+                <button id="createRoomBtn" type="button">Crear sala</button>
+                <div class="joinRoomRow">
+                    <input id="roomCodeInput" type="text" maxlength="12" placeholder="Código de sala">
+                    <button id="joinRoomBtn" type="button">Unirse</button>
+                </div>
+            </div>
+
+            <div id="roomPanel" class="roomPanel hidden">
+                <h3>Sala: <span id="currentRoomCodeText">----</span></h3>
+                <p id="roomStatusText">Esperando jugadores...</p>
+                <ul id="roomPlayersList" class="roomPlayersList"></ul>
+                <button id="startMultiplayerGameBtn" type="button">Entrar a la partida</button>
+            </div>
+
+            <p id="multiplayerStatusText" class="leaderboardStatus">Servidor no conectado todavía.</p>
+            <button id="backToModeFromMultiplayerBtn" type="button" class="smallHudButton">Volver</button>
+        </div>
+
+        <div id="menu" class="hidden">
+            <h2>Sobreviví al asedio</h2>
             <p>
-                Cada run arranca desde cero. Aguantá oleadas, comprá torres,
-                desbloqueá habilidades y superá tu récord.
+                Cada run arranca desde cero. Construí muros y torres,
+                sobreviví a oleadas desde todos los bordes y superá tu récord.
             </p>
 
             <p class="recordText">
                 Récord actual: <strong id="bestScoreMenuText">0</strong> puntos
             </p>
 
-            <div class="audioSettingsBox">
+            <div class="audioSettingsBox hidden">
                 <h3>Audio</h3>
 
                 <label>
@@ -47,32 +103,124 @@
                 </label>
             </div>
 
+            <div class="visualSettingsBox hidden">
+                <h3>Visual</h3>
+                <label>
+                    Tamaño del minimapa: <strong id="menuMinimapSizeText">82%</strong>
+                    <input type="range" id="menuMinimapSize" min="0.65" max="1.35" step="0.05" value="0.82">
+                </label>
+            </div>
+
+            <div class="controlsSettingsBox hidden">
+                <h3>Controles</h3>
+                <p class="controlsHint">Tocá una tecla para cambiarla. Si elegís una ya usada, se intercambian.</p>
+
+                <div class="controlsGrid">
+                    <span>Mover arriba</span>
+                    <button class="controlKeyButton" data-control="moveUp">W</button>
+
+                    <span>Mover abajo</span>
+                    <button class="controlKeyButton" data-control="moveDown">S</button>
+
+                    <span>Mover izquierda</span>
+                    <button class="controlKeyButton" data-control="moveLeft">A</button>
+
+                    <span>Mover derecha</span>
+                    <button class="controlKeyButton" data-control="moveRight">D</button>
+
+                    <span>Habilidad 1 · Bomba</span>
+                    <button class="controlKeyButton" data-control="bomb">1</button>
+
+                    <span>Habilidad 2 · Congelar</span>
+                    <button class="controlKeyButton" data-control="freeze">2</button>
+
+                    <span>Habilidad 3 · Tsunami</span>
+                    <button class="controlKeyButton" data-control="tsunami">3</button>
+
+                    <span>Habilidad 4 · Rayo</span>
+                    <button class="controlKeyButton" data-control="lightning">4</button>
+
+                    <span>Habilidad 5 · Meteorito</span>
+                    <button class="controlKeyButton" data-control="meteor">5</button>
+
+                    <span>Habilidad 6 · Eclipse</span>
+                    <button class="controlKeyButton" data-control="eclipse">6</button>
+                </div>
+
+                <button class="resetControlsBtn">Restaurar controles</button>
+            </div>
+
+            <div class="playerNameBox">
+                <label for="playerNameInput">Nombre del jugador</label>
+                <input id="playerNameInput" type="text" maxlength="18" placeholder="Tu nombre" autocomplete="off">
+            </div>
+
             <button id="startGameBtn">Jugar</button>
+
+            <div class="leaderboardBox menuLeaderboardBox">
+                <div class="leaderboardHeader">
+                    <h3>Leaderboard global</h3>
+                    <button id="refreshLeaderboardBtn" class="smallHudButton" type="button">Actualizar</button>
+                </div>
+                <p id="leaderboardStatusText" class="leaderboardStatus">Cargando leaderboard...</p>
+                <ol id="leaderboardList" class="leaderboardList"></ol>
+            </div>
         </div>
 
         <div id="gameArea" class="hidden">
-            <div id="hud">
-                <span>Wave: <strong id="waveText">1</strong></span>
-                <span>Vida: <strong id="hpText">20/20</strong></span>
-                <span>Barricada: <strong id="barricadeText">0/0</strong></span>
-                <span>Monedas: <strong id="coinsText">0</strong></span>
-                <span>Puntos: <strong id="scoreText">0</strong></span>
-
-                <button id="speedBtn" class="smallHudButton">Velocidad x1</button>
-                <button id="autoModeBtn" class="smallHudButton">Auto OFF</button>
-                <button id="pauseBtn" class="smallHudButton">Pausa</button>
-            </div>
-
-            <div id="abilityBar">
-                <div class="abilitySlot locked" id="abilityBombSlot">Q · Bomba</div>
-                <div class="abilitySlot locked" id="abilityFreezeSlot">W · Freezeo</div>
-                <div class="abilitySlot locked" id="abilityTsunamiSlot">E · Tsunami</div>
-                <div class="abilitySlot locked" id="abilityLightningSlot">R · Rayo</div>
-                <div class="abilitySlot locked" id="abilityMeteorSlot">F · Meteorito</div>
-            </div>
-
             <div id="playStage">
                 <canvas id="gameCanvas" width="900" height="450"></canvas>
+
+                <div id="hud" class="inGameHud">
+                    <span>Wave: <strong id="waveText">1</strong></span>
+                    <span id="hpHudBox" class="hpHudBox">
+                        <span class="hpHudBar"><span id="hpBarFill" class="hpHudFill"></span><strong id="hpText" class="hpHudText">20/20</strong></span>
+                    </span>
+                    <span>Barricada: <strong id="barricadeText">0/0</strong></span>
+                    <span id="coinsHudBox" class="coinsHudBox"><img id="coinHudIcon" class="coinHudIcon" src="assets/sprites/coin.gif" alt="Monedas" onerror="this.style.display='none'"><strong id="coinsText" class="coinsHudText">0</strong></span>
+                    <span>Puntos: <strong id="scoreText">0</strong></span>
+
+                    <button id="speedBtn" class="smallHudButton">Velocidad x1</button>
+                    <button id="autoModeBtn" class="smallHudButton">Auto OFF</button>
+                    <button id="repeatWaveBtn" class="smallHudButton repeatHudButton hidden">Repetir 0/3</button>
+                    <button id="autoRepeatWaveBtn" class="smallHudButton autoRepeatHudButton">Auto repetir OFF</button>
+                    <button id="openShopHudBtn" class="smallHudButton shopHudButton">Tienda</button>
+                    <button id="pauseBtn" class="smallHudButton">Pausa</button>
+                    <button id="consoleBtn" class="smallHudButton">Consola</button>
+                </div>
+
+                <button id="constructionBtn" class="smallHudButton constructionHudButton" type="button">Construcción</button>
+                <button id="skipBuildPhaseBtn" class="smallHudButton buildPhaseButton hidden" type="button">Saltar preparación</button>
+
+                <button id="cancelBuildBtn" class="smallHudButton cancelBuildButton hidden" type="button">Cancelar construcción</button>
+
+                <div id="structurePanel" class="structurePanel hidden">
+                    <div class="structurePanelHeader">
+                        <strong id="structurePanelTitle">Estructura</strong>
+                        <button id="closeStructurePanelBtn" type="button">×</button>
+                    </div>
+                    <div id="structurePanelInfo" class="structurePanelInfo"></div>
+                    <div id="structurePanelActions" class="structurePanelActions"></div>
+                </div>
+
+                <div id="bottomGameUi">
+                    <div id="abilityBar">
+                        <div class="abilitySlot locked" id="abilityBombSlot">1 · Bomba</div>
+                        <div class="abilitySlot locked" id="abilityFreezeSlot">2 · Freezeo</div>
+                        <div class="abilitySlot locked" id="abilityTsunamiSlot">3 · Tsunami</div>
+                        <div class="abilitySlot locked" id="abilityLightningSlot">4 · Rayo</div>
+                        <div class="abilitySlot locked" id="abilityMeteorSlot">5 · Meteorito</div>
+                        <div class="abilitySlot locked" id="abilityEclipseSlot">6 · Eclipse</div>
+                    </div>
+
+                    <div id="inventoryBar">
+                        <div class="inventoryHeader">
+                            <strong>Inventario</strong>
+                            <span id="inventoryCooldownText">Listo · Inventario 0/25</span>
+                        </div>
+                        <div id="inventorySlots" class="inventorySlots"></div>
+                    </div>
+                </div>
 
                 <div id="redFlash"></div>
 
@@ -84,6 +232,24 @@
                 </div>
 
                 <div id="centerMessage" class="hidden"></div>
+
+                <div id="consolePanel" class="overlayPanel hidden consolePanel">
+                    <h2>Consola</h2>
+                    <p class="consoleHint">Escribí comandos para debuggear o activar easter eggs.</p>
+                    <div class="consoleRow">
+                        <input id="consoleInput" type="text" placeholder="Ingresar comando..." autocomplete="off">
+                        <button id="consoleRunBtn">Ejecutar</button>
+                    </div>
+                    <div id="consoleLog" class="consoleLog">Consola lista.</div>
+                    <button id="closeConsoleBtn">Cerrar</button>
+                </div>
+
+                <div id="multiplayerChatBox" class="multiplayerChatBox hidden">
+                    <div id="multiplayerChatMessages" class="multiplayerChatMessages">
+                        <div class="mpChatLine mpChatSystem">Chat LAN listo. Enter envía. Comandos permitidos: greedisgood, canttouchme, beginner.</div>
+                    </div>
+                    <input id="multiplayerChatInput" class="multiplayerChatInput" type="text" maxlength="240" placeholder="Chat / comando..." autocomplete="off">
+                </div>
 
                 <div id="waveSummaryPanel" class="overlayPanel hidden">
                     <h2>Wave completada</h2>
@@ -99,10 +265,21 @@
                 </div>
 
                 <div id="shop" class="overlayPanel hidden">
-                    <h2>Tienda</h2>
+                    <button id="closeShopBtn" class="shopCloseButton" type="button">Cerrar</button>
+                    <h2 id="shopTitle">Tienda</h2>
+
+                    <div class="shopTabs">
+                        <button class="shopTabButton active" data-shop-tab="stats">Stats</button>
+                        <button class="shopTabButton" data-shop-tab="consumables">Consumibles</button>
+                        <button class="shopTabButton" data-shop-tab="barricades">Barricadas</button>
+                        <button class="shopTabButton" data-shop-tab="towers">Torres</button>
+                        <button class="shopTabButton" data-shop-tab="traps">Trampas</button>
+                        <button class="shopTabButton" data-shop-tab="mines">Minas</button>
+                        <button class="shopTabButton" data-shop-tab="abilities">Habilidades</button>
+                    </div>
 
                     <div class="shopSections">
-                        <section class="shopSection">
+                        <section class="shopSection active" data-shop-section="stats">
                             <h3>Stats</h3>
 
                             <button id="upgradeDamageBtn">
@@ -130,123 +307,254 @@
                             </button>
                         </section>
 
-                        <section class="shopSection">
+                        <section class="shopSection" data-shop-section="consumables">
                             <h3>Consumibles</h3>
 
                             <button id="buySmallPotionBtn">
                                 Poción chica<br>
-                                <small>Cura 6 en 2.5s</small><br>
+                                <small>Guarda x1 · Cura 6 en 2.5s</small><br>
                                 <span id="smallPotionCostText">15</span> monedas
                             </button>
 
                             <button id="buyMediumPotionBtn">
                                 Poción mediana<br>
-                                <small>Cura 14 en 3.5s</small><br>
+                                <small>Guarda x1 · Cura 14 en 3.5s</small><br>
                                 <span id="mediumPotionCostText">35</span> monedas
                             </button>
 
                             <button id="buyLargePotionBtn">
                                 Poción grande<br>
-                                <small>Cura 30 en 5s</small><br>
+                                <small>Guarda x1 · Cura 30 en 5s</small><br>
                                 <span id="largePotionCostText">70</span> monedas
                             </button>
 
+                            <button id="buyShieldPotionBtn">
+                                Amuleto protector<br>
+                                <small>Guarda x1 · Bloquea el próximo golpe</small><br>
+                                <span id="shieldPotionCostText">110</span> monedas
+                            </button>
+
+                            <button id="buyAttackSpeedPotionBtn">
+                                Poción de rapidez<br>
+                                <small>Guarda x1 · +45% velocidad por 10s</small><br>
+                                <span id="attackSpeedPotionCostText">260</span> monedas
+                            </button>
+
+                            <button id="buyDoubleShotPotionBtn">
+                                Poción de doble disparo<br>
+                                <small>Guarda x1 · Disparo doble por 9s</small><br>
+                                <span id="doubleShotPotionCostText">620</span> monedas
+                            </button>
+
+                            <button id="buyLifeStealPotionBtn">
+                                Poción vampírica<br>
+                                <small>Guarda x1 · Robo de vida temporal</small><br>
+                                <span id="lifeStealPotionCostText">520</span> monedas
+                            </button>
+                        </section>
+
+                        <section class="shopSection barricadeShop" data-shop-section="barricades">
+                            <h3>Barricadas</h3>
+
+                            <div class="barricadeSlotChoice">
+                                <span>Construcción libre: tocá una barricada, elegí posición con el mouse y usá <strong>R</strong> para rotar.</span>
+                            </div>
+
                             <button id="repairBarricadeBtn">
-                                Reparar barricada<br>
-                                <small>Restaura vida de barricada</small><br>
+                                Reparar barricadas<br>
+                                <small>Repara la más dañada</small><br>
                                 <span id="repairBarricadeCostText">45</span> monedas
                             </button>
 
                             <button id="upgradeBarricadeBtn">
-                                Mejorar barricada<br>
-                                <small><span id="barricadeTierText">Sin barricada</span></small><br>
-                                <span id="upgradeBarricadeCostText">100</span> monedas
+                                Construir barricada estándar<br>
+                                <small><span id="barricadeTierText">Sin barricadas</span></small><br>
+                                <span id="upgradeBarricadeCostText">70</span> monedas
+                            </button>
+
+                            <button id="buyRegenBarricadeBtn">
+                                Construir barricada regenerativa<br>
+                                <small>Regenera vida por segundo</small><br>
+                                <span id="regenBarricadeCostText">125</span> monedas
+                            </button>
+
+                            <button id="buyExplosiveBarricadeBtn">
+                                Construir barricada explosiva<br>
+                                <small>Explota al romperse</small><br>
+                                <span id="explosiveBarricadeCostText">150</span> monedas
+                            </button>
+
+                            <button id="buyThornsBarricadeBtn">
+                                Construir barricada con espinas<br>
+                                <small>Devuelve 50% del daño recibido</small><br>
+                                <span id="thornsBarricadeCostText">95</span> monedas
+                            </button>
+                            <button id="buyDoorBarricadeBtn">
+                                Construir puerta
+                                <small>Se abre/cierra con click · 75% más débil</small><br>
+                                <span id="doorBarricadeCostText">48</span> monedas
+                            </button>
+
+                        </section>
+
+                        <section class="shopSection towerShopWide" data-shop-section="towers">
+                            <h3>Torres <small id="towerLimitText">0/12 slots · máx 20</small></h3>
+
+                            <button id="buyTowerSlotBtn" class="towerSlotUpgradeButton">
+                                Comprar slot de torre
+                                <small>Compra 1 slot por toque · 12/20</small><br>
+                                <span id="towerSlotCostText">850</span> monedas
+                            </button>
+
+                            <button id="buyTower1Btn">
+                                Comprar torre básica<br>
+                                <small>Colocación libre · dispara al más cercano</small><br>
+                                <span id="tower1CostText">70</span> monedas
+                            </button>
+
+                            <button id="buyTower2Btn">
+                                Comprar torre rápida<br>
+                                <small>Early barato · muchos disparos, poco daño</small><br>
+                                <span id="tower2CostText">40</span> monedas
+                            </button>
+
+                            <button id="buyTower3Btn">
+                                Comprar torre perforante<br>
+                                <small>Golpea a 2 enemigos</small><br>
+                                <span id="tower3CostText">160</span> monedas
+                            </button>
+
+                            <button id="buyTower4Btn">
+                                Comprar torre de hielo<br>
+                                <small>Ralentiza en área</small><br>
+                                <span id="tower4CostText">220</span> monedas
+                            </button>
+
+                            <button id="buyTower5Btn">
+                                Comprar torre doble<br>
+                                <small>Dispara 2 proyectiles</small><br>
+                                <span id="tower5CostText">260</span> monedas
+                            </button>
+
+                            <button id="buyTower6Btn">
+                                Comprar torre de veneno<br>
+                                <small>Área con daño por ticks</small><br>
+                                <span id="tower6CostText">310</span> monedas
+                            </button>
+
+                            <button id="buyTower7Btn">
+                                Comprar ballesta<br>
+                                <small>Mucho daño, lento</small><br>
+                                <span id="tower7CostText">360</span> monedas
+                            </button>
+
+                            <button id="buyTower8Btn">
+                                Comprar torre sanguijuela<br>
+                                <small>Succiona vida y cura defensas</small><br>
+                                <span id="tower8CostText">420</span> monedas
+                            </button>
+
+                            <button id="buyTower9Btn">
+                                Comprar torre buffer<br>
+                                <small>Bufea daño y velocidad en área</small><br>
+                                <span id="tower9CostText">620</span> monedas
+                            </button>
+
+                            <button id="buyTower10Btn">
+                                Comprar Lucky Block<br>
+                                <small>Se convierte en una torre aleatoria</small><br>
+                                <span id="tower10CostText">240</span> monedas
+                            </button>
+
+                            <button id="buyTower11Btn">
+                                Comprar torre cuchilla<br>
+                                <small>Melee por ticks · vulnerable pero resistente</small><br>
+                                <span id="tower11CostText">90</span> monedas
+                            </button>
+
+                            <button id="buyTower12Btn">
+                                Comprar torre lancera<br>
+                                <small>Ataca en línea frontal · rota con R</small><br>
+                                <span id="tower12CostText">135</span> monedas
+                            </button>
+
+                            <button id="buyTower13Btn">
+                                Comprar torre láser<br>
+                                <small>Objetivo único · DPS continuo</small><br>
+                                <span id="tower13CostText">1450</span> monedas
+                            </button>
+
+                            <div id="towerSlotsPanel" class="towerSlotsPanel"></div>
+                        </section>
+
+                        <section class="shopSection" data-shop-section="traps">
+                            <h3>Trampas</h3>
+
+                            <button id="buyTrapSnareBtn">
+                                Colocar trampa de agarre<br>
+                                <small>1 uso · atrapa 1.5s al primer enemigo que la pisa</small><br>
+                                <span id="trapSnareCostText">55</span> monedas
+                            </button>
+
+                            <button id="buyTrapBleedBtn">
+                                Colocar trampa serrada<br>
+                                <small>1 uso · slow 0.5s + sangrado por 3s</small><br>
+                                <span id="trapBleedCostText">75</span> monedas
                             </button>
                         </section>
 
-                        <section class="shopSection">
-                            <h3>Torres</h3>
+                        <section class="shopSection mineShop" data-shop-section="mines">
+                            <h3>Minas</h3>
 
-                            <div id="tower1BuyBox">
-                                <button id="buyTower1Btn">
-                                    Comprar torre básica<br>
-                                    <small>Dispara al más cercano</small><br>
-                                    <span id="tower1CostText">70</span> monedas
-                                </button>
-                            </div>
+                            <button id="buyMineGoldBtn">
+                                Construir mina de eco<br>
+                                <small>No se mejora · genera oro al completar cada oleada</small><br>
+                                <span id="mineGoldCostText">220</span> monedas
+                            </button>
 
-                            <div id="tower1UpgradeBox" class="hidden">
-                                <button id="upgradeTower1Btn">
-                                    Mejorar torre básica<br>
-                                    <small>Nivel: <span id="tower1LevelText">1</span></small><br>
-                                    <span id="tower1UpgradeCostText">100</span> monedas
-                                </button>
-                            </div>
-
-                            <div id="tower2BuyBox">
-                                <button id="buyTower2Btn">
-                                    Comprar torre perforante<br>
-                                    <small>Golpea a 2 enemigos</small><br>
-                                    <span id="tower2CostText">160</span> monedas
-                                </button>
-                            </div>
-
-                            <div id="tower2UpgradeBox" class="hidden">
-                                <button id="upgradeTower2Btn">
-                                    Mejorar torre perforante<br>
-                                    <small>Nivel: <span id="tower2LevelText">1</span></small><br>
-                                    <span id="tower2UpgradeCostText">180</span> monedas
-                                </button>
-                            </div>
-
-                            <div id="tower3BuyBox">
-                                <button id="buyTower3Btn">
-                                    Comprar torre de hielo<br>
-                                    <small>Ralentiza en área</small><br>
-                                    <span id="tower3CostText">220</span> monedas
-                                </button>
-                            </div>
-
-                            <div id="tower3UpgradeBox" class="hidden">
-                                <button id="upgradeTower3Btn">
-                                    Mejorar torre de hielo<br>
-                                    <small>Nivel: <span id="tower3LevelText">1</span></small><br>
-                                    <span id="tower3UpgradeCostText">240</span> monedas
-                                </button>
+                            <div class="mineInfoBox">
+                                <strong id="mineLimitText">0/5 minas · +0 c/u próxima oleada</strong>
+                                <small>Balance: costo escalonado, límite bajo y pago por oleada para evitar abuso en peleas largas.</small>
                             </div>
                         </section>
 
-                        <section class="shopSection abilitiesShop">
+                        <section class="shopSection abilitiesShop" data-shop-section="abilities">
                             <h3>Habilidades</h3>
 
                             <button id="buyBombBtn">
                                 Comprar Bomba<br>
-                                <small>Q · Daño en área</small><br>
+                                <small><span id="bombKeyText">1</span> · Daño en área</small><br>
                                 <span id="bombCostText">180</span> monedas
                             </button>
 
                             <button id="buyFreezeBtn">
                                 Comprar Congelar<br>
-                                <small>W · Ralentiza a todos</small><br>
+                                <small><span id="freezeKeyText">2</span> · Ralentiza a todos</small><br>
                                 <span id="freezeCostText">280</span> monedas
                             </button>
 
                             <button id="buyTsunamiBtn">
                                 Comprar Tsunami<br>
-                                <small>E · Empuja y daña</small><br>
-                                <span id="tsunamiCostText">430</span> monedas
+                                <small><span id="tsunamiKeyText">3</span> · Empuja y daña</small><br>
+                                <span id="tsunamiCostText">560</span> monedas
                             </button>
 
                             <button id="buyLightningBtn">
                                 Comprar Rayo ramificado<br>
-                                <small>R · Salta entre enemigos</small><br>
-                                <span id="lightningCostText">650</span> monedas
+                                <small><span id="lightningKeyText">4</span> · Salta entre enemigos</small><br>
+                                <span id="lightningCostText">980</span> monedas
                             </button>
 
                             <button id="buyMeteorBtn">
                                 Comprar Meteorito<br>
-                                <small>F · Gran explosión</small><br>
-                                <span id="meteorCostText">950</span> monedas
+                                <small><span id="meteorKeyText">5</span> · Gran explosión</small><br>
+                                <span id="meteorCostText">1750</span> monedas
+                            </button>
+
+                            <button id="buyEclipseBtn">
+                                Comprar Eclipse<br>
+                                <small><span id="eclipseKeyText">6</span> · Zona oscura de daño y slow</small><br>
+                                <span id="eclipseCostText">2800</span> monedas
                             </button>
                         </section>
                     </div>
@@ -256,9 +564,19 @@
 
                 <div id="gameOverScreen" class="overlayPanel hidden">
                     <h2>Run terminada</h2>
-                    <p id="deathMessageText">Tu base cayó.</p>
+                    <p id="deathMessageText">El jugador cayó.</p>
                     <p>Puntos de esta run: <strong id="finalScoreText">0</strong></p>
                     <p>Récord: <strong id="bestScoreText">0</strong></p>
+
+                    <div class="leaderboardBox gameOverLeaderboardBox">
+                        <div class="leaderboardHeader">
+                            <h3>Leaderboard global</h3>
+                            <button id="refreshLeaderboardGameBtn" class="smallHudButton" type="button">Actualizar</button>
+                        </div>
+                        <p id="leaderboardGameStatusText" class="leaderboardStatus">Guardando puntuación...</p>
+                        <ol id="leaderboardGameList" class="leaderboardList"></ol>
+                    </div>
+
                     <button id="newRunBtn">Nueva run</button>
                 </div>
                 <div id="pausePanel" class="overlayPanel hidden">
@@ -288,6 +606,53 @@
                         </label>
                     </div>
 
+                    <div class="visualSettingsBox pauseVisualBox">
+                        <h3>Visual</h3>
+                        <label>
+                            Tamaño del minimapa: <strong id="pauseMinimapSizeText">82%</strong>
+                            <input type="range" id="pauseMinimapSize" min="0.65" max="1.35" step="0.05" value="0.82">
+                        </label>
+                    </div>
+
+                            <div class="controlsSettingsBox">
+                        <h3>Controles</h3>
+                        <p class="controlsHint">Tocá una tecla para cambiarla. Si elegís una ya usada, se intercambian.</p>
+
+                                <div class="controlsGrid">
+                            <span>Mover arriba</span>
+                                    <button class="controlKeyButton" data-control="moveUp">W</button>
+
+                            <span>Mover abajo</span>
+                                    <button class="controlKeyButton" data-control="moveDown">S</button>
+
+                            <span>Mover izquierda</span>
+                                    <button class="controlKeyButton" data-control="moveLeft">A</button>
+
+                            <span>Mover derecha</span>
+                                    <button class="controlKeyButton" data-control="moveRight">D</button>
+
+                            <span>Habilidad 1 · Bomba</span>
+                                    <button class="controlKeyButton" data-control="bomb">1</button>
+
+                            <span>Habilidad 2 · Congelar</span>
+                                    <button class="controlKeyButton" data-control="freeze">2</button>
+
+                            <span>Habilidad 3 · Tsunami</span>
+                                    <button class="controlKeyButton" data-control="tsunami">3</button>
+
+                            <span>Habilidad 4 · Rayo</span>
+                                    <button class="controlKeyButton" data-control="lightning">4</button>
+
+                            <span>Habilidad 5 · Meteorito</span>
+                                    <button class="controlKeyButton" data-control="meteor">5</button>
+
+                            <span>Habilidad 6 · Eclipse</span>
+                                    <button class="controlKeyButton" data-control="eclipse">6</button>
+                                </div>
+
+                        <button class="resetControlsBtn">Restaurar controles</button>
+                    </div>
+
                     <div class="pauseButtons">
                         <button id="resumeBtn">Continuar</button>
                         <button id="backToMenuBtn">Volver al menú</button>
@@ -305,12 +670,13 @@
             <div id="info">
                 <p>
                     Hecho por Alene <br>
-                    Habilidades de la Q a la F, Disparo: Click izquierdo - Spacebar
+                    Movimiento: WASD · C construcción · T tienda · Ctrl+1-5 consumibles · Disparo: Click izquierdo / Spacebar
                 </p>
             </div>
         </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
 
