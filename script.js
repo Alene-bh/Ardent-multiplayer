@@ -119,12 +119,19 @@ function loadPlayerSprites() {
 }
 
 function getSpriteFrameData(img) {
-    if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return null;
+    if (!img) return null;
+
+    // Soporta tanto <img> como canvas tintados. Antes los sprites tintados de
+    // jugadores remotos devolvían false porque un canvas no tiene naturalWidth.
+    const naturalWidth = img.naturalWidth || img.width || 0;
+    const naturalHeight = img.naturalHeight || img.height || 0;
+    const isReady = img.complete !== false || img instanceof HTMLCanvasElement;
+    if (!isReady || !naturalWidth || !naturalHeight) return null;
 
     const frameWidth = PLAYER_SPRITE_TILE_SIZE;
     const frameHeight = PLAYER_SPRITE_TILE_SIZE;
-    const columns = Math.max(1, Math.floor(img.naturalWidth / frameWidth));
-    const rows = Math.max(1, Math.floor(img.naturalHeight / frameHeight));
+    const columns = Math.max(1, Math.floor(naturalWidth / frameWidth));
+    const rows = Math.max(1, Math.floor(naturalHeight / frameHeight));
     const frameCount = Math.max(1, columns * rows);
 
     return { frameWidth, frameHeight, columns, rows, frameCount };
@@ -151,16 +158,69 @@ function getPlayerSpriteDirectionRow(rows = 1) {
     return 0;
 }
 
+function getTintedPlayerSpriteImage(img, color, cacheKey = "player") {
+    if (!img || !color) return null;
+    const sourceWidth = img.naturalWidth || img.width || 0;
+    const sourceHeight = img.naturalHeight || img.height || 0;
+    const ready = img.complete !== false || img instanceof HTMLCanvasElement;
+    if (!ready || !sourceWidth || !sourceHeight) return null;
+
+    if (!getTintedPlayerSpriteImage.cache) getTintedPlayerSpriteImage.cache = new Map();
+    const key = `${cacheKey}:${color}:${sourceWidth}x${sourceHeight}`;
+    if (getTintedPlayerSpriteImage.cache.has(key)) return getTintedPlayerSpriteImage.cache.get(key);
+
+    const canvasCopy = document.createElement("canvas");
+    canvasCopy.width = sourceWidth;
+    canvasCopy.height = sourceHeight;
+    const cctx = canvasCopy.getContext("2d");
+    cctx.imageSmoothingEnabled = false;
+    cctx.drawImage(img, 0, 0);
+
+    const target = getCssColorRgb(color);
+    const imageData = cctx.getImageData(0, 0, canvasCopy.width, canvasCopy.height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+        const a = data[i + 3];
+        if (a <= 10) continue;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const brightness = (r + g + b) / 3;
+        const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+
+        // Mantiene sombras/ojos y tiñe sobre todo ropa/zonas de color.
+        if (brightness > 28 && brightness < 245 && saturation > 8) {
+            const shade = Math.max(0.34, Math.min(1.18, brightness / 150));
+            data[i] = Math.round(target.r * shade);
+            data[i + 1] = Math.round(target.g * shade);
+            data[i + 2] = Math.round(target.b * shade);
+        }
+    }
+
+    cctx.putImageData(imageData, 0, 0);
+    getTintedPlayerSpriteImage.cache.set(key, canvasCopy);
+    return canvasCopy;
+}
+
 function drawPlayerSprite() {
     if (!player) return false;
 
     const animation = getPlayerSpriteAnimation();
     let img = playerSprites[animation];
+    if (multiplayer?.enabled) {
+        const tinted = getTintedPlayerSpriteImage(img, multiplayer.localPlayerColor || "#ffffff", `local:${animation}`);
+        if (tinted) img = tinted;
+    }
     let frameData = getSpriteFrameData(img);
 
     // Fallback: si falta hurt/death/walk, usa idle. Si no hay sprites, vuelve al dibujo viejo.
     if (!frameData && animation !== "idle") {
         img = playerSprites.idle;
+        if (multiplayer?.enabled) {
+            const tinted = getTintedPlayerSpriteImage(img, multiplayer.localPlayerColor || "#ffffff", "local:idle");
+            if (tinted) img = tinted;
+        }
         frameData = getSpriteFrameData(img);
     }
     if (!frameData) return false;
@@ -1826,6 +1886,20 @@ function getEnemyMainTarget(enemy) {
         candidates.push({ type: "player", x: player.x, y: player.y, radius: 23, object: player, score: d * 0.72 });
     }
 
+    // Multiplayer: los enemigos también deben considerar jugadores remotos aunque
+    // hayan hecho alt-tab. Usamos la última posición conocida del server.
+    if (multiplayer.enabled && multiplayer.players) {
+        const localId = getLocalMultiplayerId();
+        Object.values(multiplayer.players).forEach(mp => {
+            if (!mp || mp.id === localId || mp.spectating || mp.alive === false || Number(mp.hp) <= 0) return;
+            const x = Number(mp.x);
+            const y = Number(mp.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            const d = Math.hypot(enemy.x - x, enemy.y - y);
+            candidates.push({ type: "remotePlayer", x, y, radius: 23, object: { id: mp.id, name: mp.name, color: mp.color }, score: d * 0.72 });
+        });
+    }
+
     (towers || []).forEach(tower => {
         if (!tower || !tower.owned || tower.hp <= 0) return;
         const d = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
@@ -2243,6 +2317,47 @@ function damagePlayer(amount, sourceEnemy = null, impactX = player ? player.x : 
     }
 
     return false;
+}
+
+function damageRemoteMultiplayerPlayer(target, amount, sourceEnemy = null) {
+    if (!multiplayer.enabled || !isMultiplayerHost() || !target?.object?.id || !multiplayer.socket) return false;
+    const targetId = target.object.id;
+    const safeAmount = Math.max(0, Number(amount) || 0);
+    if (safeAmount <= 0) return false;
+    multiplayer.socket.emit("remotePlayerDamage", {
+        roomId: multiplayer.roomId,
+        targetId,
+        amount: safeAmount,
+        source: sourceEnemy ? {
+            name: sourceEnemy.name || sourceEnemy.bossName || sourceEnemy.special || sourceEnemy.type || "enemigo",
+            type: sourceEnemy.type || "enemy",
+            special: sourceEnemy.special || "",
+            bossVariant: sourceEnemy.bossVariant || "",
+            titanVariant: sourceEnemy.titanVariant || "",
+            color: sourceEnemy.color || "#ff4444"
+        } : null,
+        x: target.x,
+        y: target.y
+    });
+    createImpactParticles(target.x, target.y, sourceEnemy?.color || target.object.color || "#ff4444");
+    return false;
+}
+
+function applyRemotePlayerDamage(data) {
+    if (!multiplayer.enabled || !player || multiplayer.spectating) return;
+    const amount = Math.max(0, Number(data?.amount) || 0);
+    if (amount <= 0) return;
+    const source = data?.source || {};
+    const fakeEnemy = {
+        name: source.name || "enemigo",
+        type: source.type || "enemy",
+        special: source.special || "",
+        bossVariant: source.bossVariant || "",
+        titanVariant: source.titanVariant || "",
+        color: source.color || "#ff4444"
+    };
+    damagePlayer(amount, fakeEnemy, Number(data?.x) || player.x, Number(data?.y) || player.y, "¡Golpe bloqueado!");
+    sendMultiplayerState(true);
 }
 
 function explodeBarricade(b) {
@@ -3350,9 +3465,27 @@ function setMenuVisibility({ showMode = false, showSingle = false, showMultiplay
     if (multiplayerMenu) multiplayerMenu.classList.toggle("hidden", !showMultiplayer);
 }
 
+function resetMultiplayerRuntimeForSinglePlayer() {
+    if (multiplayer.socket && multiplayer.inRoom) multiplayer.socket.emit("leaveRoom");
+    multiplayer.enabled = false;
+    multiplayer.inRoom = false;
+    multiplayer.roomId = "";
+    multiplayer.hostId = "";
+    multiplayer.players = {};
+    multiplayer.latestHostState = null;
+    multiplayer.spectating = false;
+    multiplayer.spectatorTargetId = "";
+    multiplayer.deathInfo = null;
+    multiplayer.deathReported = false;
+    multiplayer.chatOpen = false;
+    if (multiplayerChatBox) multiplayerChatBox.classList.add("hidden");
+    if (multiplayerDeathPanel) multiplayerDeathPanel.classList.add("hidden");
+    if (spectatorControls) spectatorControls.classList.add("hidden");
+}
+
 function showSinglePlayerMenu() {
     selectedGameMode = "single";
-    multiplayer.enabled = false;
+    resetMultiplayerRuntimeForSinglePlayer();
     setMenuVisibility({ showSingle: true });
     updateStartButtonSavedState();
 }
@@ -3516,6 +3649,11 @@ function connectMultiplayerSocket() {
         }
         if (gold > 0) spawnFlyingCoin(Number(data.x) || player?.x || 0, Number(data.y) || player?.y || 0, gold);
         updateHud(true);
+    });
+
+    socket.on("playerDamage", data => {
+        if (!data || data.roomId !== multiplayer.roomId || !multiplayer.enabled) return;
+        applyRemotePlayerDamage(data);
     });
 
     socket.on("buildResult", data => {
@@ -4274,45 +4412,16 @@ function sendMultiplayerState(force = false) {
 }
 
 function tintPlayerSpriteForColor(color) {
-    const key = String(color || "#ffffff");
-    if (!tintPlayerSpriteForColor.cache) tintPlayerSpriteForColor.cache = new Map();
-    if (tintPlayerSpriteForColor.cache.has(key)) return tintPlayerSpriteForColor.cache.get(key);
-    const base = playerSprites.idle;
-    if (!base || !base.complete || !base.naturalWidth) return null;
-    const canvasCopy = document.createElement("canvas");
-    canvasCopy.width = base.naturalWidth;
-    canvasCopy.height = base.naturalHeight;
-    const cctx = canvasCopy.getContext("2d");
-    cctx.imageSmoothingEnabled = false;
-    cctx.drawImage(base, 0, 0);
-    const target = getCssColorRgb(key);
-    const img = cctx.getImageData(0, 0, canvasCopy.width, canvasCopy.height);
-    const data = img.data;
-    for (let i = 0; i < data.length; i += 4) {
-        const a = data[i + 3];
-        if (a <= 10) continue;
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        const brightness = (r + g + b) / 3;
-        const saturation = Math.max(r, g, b) - Math.min(r, g, b);
-        // Teñimos principalmente ropa/zonas medias y mantenemos ojos/sombras fuertes.
-        if (brightness > 35 && brightness < 245 && saturation > 12) {
-            const shade = Math.max(0.38, Math.min(1.12, brightness / 150));
-            data[i] = Math.round(target.r * shade);
-            data[i + 1] = Math.round(target.g * shade);
-            data[i + 2] = Math.round(target.b * shade);
-        }
-    }
-    cctx.putImageData(img, 0, 0);
-    tintPlayerSpriteForColor.cache.set(key, canvasCopy);
-    return canvasCopy;
+    return getTintedPlayerSpriteImage(playerSprites.idle, color || "#ffffff", "remote:idle");
 }
 
 function drawRemotePlayerSpriteTinted(remote, color) {
-    const img = tintPlayerSpriteForColor(color) || playerSprites.idle;
+    const moving = Boolean(remote.isMoving);
+    let baseImg = moving ? (playerSprites.walk || playerSprites.idle) : playerSprites.idle;
+    let img = getTintedPlayerSpriteImage(baseImg, color || "#ffffff", `remote:${moving ? "walk" : "idle"}`) || baseImg;
     const frameData = getSpriteFrameData(img);
     if (!frameData) return false;
     const { frameWidth, frameHeight, columns, rows } = frameData;
-    const moving = Boolean(remote.isMoving);
     const fps = moving ? 10 : 4;
     const lastX = Number(remote.lastMoveX) || 0;
     const lastY = Number(remote.lastMoveY) || 0;
@@ -4503,6 +4612,7 @@ function startGame() {
         gameSpeed = clampMultiplayerSpeed(multiplayer.roomSpeed || gameSpeed || 1);
         updateMultiplayerSpeedUI();
     } else if (playerNameInput) {
+        resetMultiplayerRuntimeForSinglePlayer();
         const typedName = playerNameInput.value.trim();
         playerName = typedName || "Jugador";
         localStorage.setItem("ardentPlayerName", playerName);
@@ -4532,7 +4642,7 @@ function startGame() {
                 player.name = playerName;
                 sendMultiplayerState(true);
             }
-            showCenterMessage(selectedGameMode === "multiplayer" ? "¡MULTIPLAYER LAN!" : "¡SOBREVIVÍ!", 1200);
+            showCenterMessage(selectedGameMode === "multiplayer" ? "¡MULTIPLAYER ONLINE!" : "¡SOBREVIVÍ!", 1200);
         } else {
             // Si la partida se guardó justo al pausar/cambiar de pantalla,
             // al continuar una oleada debe arrancar limpia: sin pausa y corriendo.
@@ -6118,7 +6228,7 @@ function updateEnemies() {
         }
 
         if (enemy.special === "doombringer") {
-            if (player && player.immortal) {
+            if (mainTarget.type !== "remotePlayer" && player && player.immortal) {
                 createImpactParticles(enemy.x, enemy.y, "#ffe28a");
                 enemies.splice(i, 1);
                 showCenterMessage("Titán anulado", 800);
@@ -6126,8 +6236,14 @@ function updateEnemies() {
             }
             if (now - enemy.lastAttackTime >= enemy.attackDelay) {
                 const titanHit = enemy.titanVariant === "dash" ? 14 : enemy.titanVariant === "burn" ? 9 : 11;
-                const ended = damagePlayer(titanHit, enemy, enemy.x, enemy.y, "¡Golpe del Titán bloqueado!");
-                if (enemy.titanVariant === "burn") createFireZone(player.x, player.y, 62, 1.8 + wave * 0.015, 1800, 450);
+                let ended = false;
+                if (mainTarget.type === "remotePlayer") {
+                    damageRemoteMultiplayerPlayer(mainTarget, titanHit, enemy);
+                    if (enemy.titanVariant === "burn") createFireZone(mainTarget.x, mainTarget.y, 62, 1.8 + wave * 0.015, 1800, 450);
+                } else {
+                    ended = damagePlayer(titanHit, enemy, enemy.x, enemy.y, "¡Golpe del Titán bloqueado!");
+                    if (enemy.titanVariant === "burn") createFireZone(player.x, player.y, 62, 1.8 + wave * 0.015, 1800, 450);
+                }
                 enemy.lastAttackTime = now;
                 if (ended) return;
             }
@@ -6147,6 +6263,8 @@ function updateEnemies() {
             } else if (mainTarget.type === "mine" && mainTarget.object) {
                 damageMine(mainTarget.object, enemy.damageToDefense || 1, enemy);
                 createImpactParticles(mainTarget.x, mainTarget.y, enemy.color || "#d6a05f");
+            } else if (mainTarget.type === "remotePlayer" && mainTarget.object) {
+                damageRemoteMultiplayerPlayer(mainTarget, enemy.damageToDefense, enemy);
             } else {
                 ended = damagePlayer(enemy.damageToDefense, enemy, enemy.x, enemy.y, "¡Golpe bloqueado!");
             }

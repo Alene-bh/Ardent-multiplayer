@@ -227,6 +227,33 @@ io.on('connection', socket => {
 
 
 
+  socket.on('remotePlayerDamage', payload => {
+    const roomId = socket.data.roomId;
+    const room = rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    const targetId = String(payload?.targetId || '');
+    const target = room.players.get(targetId);
+    if (!target) return;
+    const amount = clampNumber(payload?.amount, 0, 999999, 0);
+    if (amount <= 0 || target.alive === false || target.spectating) return;
+
+    target.hp = Math.max(0, (Number(target.hp) || 0) - amount);
+    target.lastDeathCause = String(payload?.source?.name || payload?.source?.special || 'enemigo').slice(0, 80);
+    if (target.hp <= 0) {
+      target.alive = false;
+      target.diedAtWave = target.wave || 1;
+    }
+
+    io.to(targetId).emit('playerDamage', {
+      roomId,
+      amount,
+      source: payload?.source || null,
+      x: clampNumber(payload?.x, 0, 3400, target.x || 1700),
+      y: clampNumber(payload?.y, 0, 2300, target.y || 1150)
+    });
+    emitRoomUpdate(roomId);
+  });
+
   socket.on('playerReward', payload => {
     const roomId = socket.data.roomId;
     const room = rooms.get(roomId);
@@ -431,11 +458,11 @@ function maybeElectRoomHost(roomId) {
   if (!room) return;
   const current = room.players.get(room.hostId);
   const now = Date.now();
-  const currentOk = current && current.alive !== false && !current.spectating && current.pageVisible !== false && now - (current.updatedAt || 0) < 9000;
+  const currentOk = current && current.alive !== false && !current.spectating && now - (current.updatedAt || 0) < 9000;
   if (currentOk) return;
 
   const candidates = [...room.players.values()]
-    .filter(p => p && p.alive !== false && !p.spectating && p.pageVisible !== false && now - (p.updatedAt || 0) < 12000)
+    .filter(p => p && p.alive !== false && !p.spectating && now - (p.updatedAt || 0) < 12000)
     .sort((a, b) => (b.score || 0) - (a.score || 0));
 
   const fallback = [...room.players.values()]
