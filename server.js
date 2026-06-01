@@ -29,8 +29,14 @@ const MIN_WAVE_SPAWN_INTERVAL = 85;
 const MAX_LATE_WAVE_ENEMIES = 430;
 const MAX_BOSS_WAVE_ENEMIES = 300;
 const ENEMY_SURVIVAL_SPEED_MULTIPLIER = 0.72;
-const SNAPSHOT_HZ = 20;
-const TICK_MS = 1000 / SNAPSHOT_HZ;
+const TICK_HZ = 30;
+const SNAPSHOT_HZ = 12;
+const TICK_MS = 1000 / TICK_HZ;
+const SNAPSHOT_MS = 1000 / SNAPSHOT_HZ;
+// El mundo de Fortaleza es mucho más grande que el canvas clásico.
+// Si usamos velocidades del juego base sin escalar, los enemigos tardan siglos
+// en llegar y parece que todo funciona en cámara lenta.
+const SERVER_ENEMY_WORLD_SPEED_MULTIPLIER = 2.35;
 
 const towerDefinitions = [
   { key: 'tower1', name: 'Básica', type: 'basic', cost: 70, damage: 0.75, range: 230, fireDelay: 900, color: 'cyan', label: 'B' },
@@ -194,6 +200,50 @@ function emitSnapshot(roomId) {
   io.to(roomId).volatile.emit('serverWorldState', { roomId, state: world });
 }
 
+function roundNet(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+function compactEnemy(e) {
+  return {
+    id: e.id, x: roundNet(e.x), y: roundNet(e.y), radius: e.radius || 18,
+    color: e.color, hp: roundNet(e.hp), maxHp: roundNet(e.maxHp),
+    isBoss: Boolean(e.isBoss), name: e.name || '', special: e.special || null,
+    hitFlash: roundNet(e.hitFlash || 0), isAttacking: Boolean(e.isAttacking),
+    targetType: e.targetType || '', targetX: roundNet(e.targetX), targetY: roundNet(e.targetY),
+    vx: roundNet(e.vx || 0), vy: roundNet(e.vy || 0), speed: roundNet(e.speed || 0)
+  };
+}
+
+function compactProjectile(p) {
+  return {
+    id: p.id, x: roundNet(p.x), y: roundNet(p.y), radius: p.radius || 5,
+    color: p.color || 'white', dx: roundNet(p.dx || 0), dy: roundNet(p.dy || 0),
+    speed: roundNet(p.speed || 0), owner: p.owner || '', ownerId: p.ownerId || ''
+  };
+}
+
+function compactTower(t) {
+  return {
+    id: t.id, key: t.key, name: t.name, type: t.type, x: roundNet(t.x), y: roundNet(t.y),
+    range: t.range, damage: t.damage, fireDelay: t.fireDelay, color: t.color, label: t.label,
+    hp: roundNet(t.hp), maxHp: roundNet(t.maxHp), level: t.level || 1, rotation: roundNet(t.rotation || 0),
+    ownerId: t.ownerId || '', ownerColor: t.ownerColor || ''
+  };
+}
+
+function compactPlain(item) {
+  if (!item || typeof item !== 'object') return item;
+  const out = {};
+  for (const [k, v] of Object.entries(item)) {
+    if (typeof v === 'number') out[k] = roundNet(v);
+    else if (typeof v === 'string' || typeof v === 'boolean' || v === null) out[k] = v;
+  }
+  return out;
+}
+
 function buildWorldSnapshot(room) {
   const w = room.world;
   return {
@@ -208,19 +258,19 @@ function buildWorldSnapshot(room) {
     enemiesSpawned: w.enemiesSpawned,
     spawnInterval: w.spawnInterval,
     lastSpawnTime: w.lastSpawnTime,
-    baseCore: w.baseCore,
-    barricades: w.barricades,
-    towers: w.towers,
-    enemies: w.enemies,
-    projectiles: w.projectiles,
-    bossProjectiles: w.bossProjectiles,
-    slowZones: w.slowZones,
-    poisonZones: w.poisonZones,
-    fireZones: w.fireZones,
-    traps: w.traps,
-    mines: w.mines,
-    titanShards: w.titanShards,
-    effects: w.effects,
+    baseCore: w.baseCore ? { ...w.baseCore, hp: roundNet(w.baseCore.hp), maxHp: roundNet(w.baseCore.maxHp) } : null,
+    barricades: w.barricades.map(compactPlain),
+    towers: w.towers.map(compactTower),
+    enemies: w.enemies.map(compactEnemy),
+    projectiles: w.projectiles.map(compactProjectile),
+    bossProjectiles: w.bossProjectiles.map(compactProjectile),
+    slowZones: w.slowZones.map(compactPlain),
+    poisonZones: w.poisonZones.map(compactPlain),
+    fireZones: w.fireZones.map(compactPlain),
+    traps: w.traps.map(compactPlain),
+    mines: w.mines.map(compactPlain),
+    titanShards: w.titanShards.map(compactPlain),
+    effects: w.effects.slice(-55).map(compactPlain),
     sentAt: Date.now()
   };
 }
@@ -454,8 +504,8 @@ function spawnEnemy(room) {
   w.enemies.push({
     id: w.nextEnemyId++, x: spawn.x, y: spawn.y, radius: boss ? 42 : 18,
     color: type.color, hp: maxHp, maxHp,
-    baseSpeed: (type.speed + speedScaling) * ENEMY_SURVIVAL_SPEED_MULTIPLIER,
-    speed: (type.speed + speedScaling) * ENEMY_SURVIVAL_SPEED_MULTIPLIER,
+    baseSpeed: (type.speed + speedScaling) * ENEMY_SURVIVAL_SPEED_MULTIPLIER * SERVER_ENEMY_WORLD_SPEED_MULTIPLIER,
+    speed: (type.speed + speedScaling) * ENEMY_SURVIVAL_SPEED_MULTIPLIER * SERVER_ENEMY_WORLD_SPEED_MULTIPLIER,
     reward: boss ? (type.reward + w.wave * 8) : getEnemyRewardForWave(w.wave, type.reward),
     scoreValue: type.score + (boss ? getWaveScoreBonus(w.wave) * 10 : getWaveScoreBonus(w.wave)),
     damageToDefense: type.damageToDefense, attackDelay: type.attackDelay, lastAttackTime: 0,
@@ -584,10 +634,17 @@ function updateEnemies(room, dtMs) {
     const dx = target.x - e.x;
     const dy = target.y - e.y;
     const dist = Math.hypot(dx, dy) || 1;
+    e.targetType = target.type;
+    e.targetX = target.x;
+    e.targetY = target.y;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    e.vx = nx * (e.speed || 0);
+    e.vy = ny * (e.speed || 0);
     const attackDistance = (e.radius || 18) + (target.radius || PLAYER_RADIUS);
     if (dist > attackDistance) {
-      e.x = clampNumber(e.x + dx / dist * e.speed * factor, -80, WORLD_WIDTH + 80, e.x);
-      e.y = clampNumber(e.y + dy / dist * e.speed * factor, -80, WORLD_HEIGHT + 80, e.y);
+      e.x = clampNumber(e.x + e.vx * factor, -80, WORLD_WIDTH + 80, e.x);
+      e.y = clampNumber(e.y + e.vy * factor, -80, WORLD_HEIGHT + 80, e.y);
       e.isAttacking = false;
     } else if (w.gameTime - (e.lastAttackTime || 0) >= (e.attackDelay || 1000)) {
       e.lastAttackTime = w.gameTime;
@@ -786,7 +843,10 @@ setInterval(() => {
     const dt = Math.max(1, Math.min(125, now - (room.world.lastTickAt || now)));
     room.world.lastTickAt = now;
     updateRoom(room, dt);
-    emitSnapshot(room.id);
+    if (!room.lastSnapshotAt || now - room.lastSnapshotAt >= SNAPSHOT_MS) {
+      room.lastSnapshotAt = now;
+      emitSnapshot(room.id);
+    }
   }
 }, TICK_MS);
 

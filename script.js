@@ -4081,6 +4081,11 @@ function normalizeServerWorldArray(list, kind = "entity") {
             entity.maxHp = Number.isFinite(Number(entity.maxHp)) ? Number(entity.maxHp) : Math.max(1, entity.hp);
             entity.color = entity.color || "limegreen";
             entity.hitFlash = Number(entity.hitFlash) || 0;
+            entity.vx = Number.isFinite(Number(entity.vx)) ? Number(entity.vx) : 0;
+            entity.vy = Number.isFinite(Number(entity.vy)) ? Number(entity.vy) : 0;
+            entity.speed = Number.isFinite(Number(entity.speed)) ? Number(entity.speed) : 0;
+            entity.targetX = Number.isFinite(Number(entity.targetX)) ? Number(entity.targetX) : entity.x;
+            entity.targetY = Number.isFinite(Number(entity.targetY)) ? Number(entity.targetY) : entity.y;
         }
         if (kind === "projectile") {
             entity.radius = Number.isFinite(Number(entity.radius)) ? Number(entity.radius) : 5;
@@ -4108,6 +4113,10 @@ function applyHostAuthoritativeState(state) {
     spawnInterval = Number(state.spawnInterval) || spawnInterval;
     lastSpawnTime = Number(state.lastSpawnTime) || lastSpawnTime;
     baseCore = state.baseCore || baseCore;
+    if (state.serverAuthoritative && baseCore) {
+        basePlaced = true;
+        pendingBasePlacement = false;
+    }
     barricades = Array.isArray(state.barricades) ? normalizeServerWorldArray(state.barricades, "barricade") : barricades;
     barricade = barricades?.[0] || barricade;
     towers = Array.isArray(state.towers) ? normalizeServerWorldArray(state.towers, "tower") : towers;
@@ -4443,7 +4452,7 @@ function startMultiplayerGame() {
 function sendMultiplayerState(force = false) {
     if (!multiplayer.enabled || !multiplayer.inRoom || !multiplayer.socket || !player) return;
     const now = performance.now();
-    if (!force && now - multiplayer.lastStateSentAt < 50) return;
+    if (!force && now - multiplayer.lastStateSentAt < (multiplayer.serverAuthoritative ? 67 : 50)) return;
     multiplayer.lastStateSentAt = now;
     multiplayer.socket.emit("playerState", {
         roomId: multiplayer.roomId,
@@ -4453,7 +4462,7 @@ function sendMultiplayerState(force = false) {
         title: getMultiplayerNameRole(player.name || playerName).title,
         x: player.x,
         y: player.y,
-        hp: player.hp,
+        hp: (multiplayer.serverAuthoritative && (multiplayer.spectating || player.hp <= 0)) ? 0 : player.hp,
         maxHp: player.maxHp,
         isMoving: player.isMoving,
         lastMoveX: player.lastMoveX,
@@ -7495,12 +7504,17 @@ function drawPath() {
 }
 
 function drawBase() {
-    if (!basePlaced || !baseCore) return;
+    if ((!basePlaced && !(multiplayer?.serverAuthoritative && baseCore)) || !baseCore) return;
     ctx.save();
     ctx.fillStyle = "#ffe28a";
     ctx.beginPath();
     ctx.arc(baseCore.x, baseCore.y, BASE_RADIUS, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = "rgba(255,226,138,0.45)";
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(baseCore.x, baseCore.y, BASE_RADIUS + 8, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.strokeStyle = "rgba(0,0,0,0.65)";
     ctx.lineWidth = 4;
     ctx.stroke();
@@ -9004,6 +9018,44 @@ function scheduleNextGameLoop() {
     }
 }
 
+
+function updateServerAuthoritativeVisuals() {
+    if (!multiplayer?.serverAuthoritative) return;
+    const factor = Math.max(0, Math.min(2.2, frameScale || 1));
+    // El server decide colisiones/daño. Esto es SOLO suavizado visual entre snapshots,
+    // para que los bichos no parezcan trabados o en cámara lenta por la red.
+    if (Array.isArray(enemies)) {
+        enemies.forEach(e => {
+            if (!e || e.hp <= 0) return;
+            const vx = Number(e.vx) || 0;
+            const vy = Number(e.vy) || 0;
+            const tx = Number(e.targetX);
+            const ty = Number(e.targetY);
+            const hasTarget = Number.isFinite(tx) && Number.isFinite(ty);
+            if (Math.abs(vx) > 0.001 || Math.abs(vy) > 0.001) {
+                e.x += vx * factor;
+                e.y += vy * factor;
+            } else if (hasTarget) {
+                const dx = tx - e.x;
+                const dy = ty - e.y;
+                const d = Math.hypot(dx, dy) || 1;
+                const speed = Number(e.speed) || 0;
+                if (d > (e.radius || 18) + 18 && speed > 0) {
+                    e.x += dx / d * speed * factor;
+                    e.y += dy / d * speed * factor;
+                }
+            }
+        });
+    }
+    if (Array.isArray(projectiles)) {
+        projectiles.forEach(p => {
+            if (!p) return;
+            p.x += (Number(p.dx) || 0) * (Number(p.speed) || 0) * factor;
+            p.y += (Number(p.dy) || 0) * (Number(p.speed) || 0) * factor;
+        });
+    }
+}
+
 function gameLoop() {
     const realNow = performance.now();
     const delta = realNow - lastFrameTime;
@@ -9059,10 +9111,11 @@ function gameLoop() {
         // y construir mientras corre el contador hacia la próxima oleada.
         updatePlayerMovement();
         regenerateBarricades();
-    } else if (multiplayerGuest && gameStarted && !isPaused && !multiplayer.spectating) {
-        // En cliente multiplayer, el mundo lo manda el host. Este jugador mueve
-        // su personaje y el host genera sus disparos reales.
-        updatePlayerMovement();
+    } else if (multiplayerGuest && gameStarted && !isPaused) {
+        // En multiplayer server-authoritative el server manda el mundo real;
+        // el cliente solo suaviza lo visual y mueve al jugador local.
+        updateServerAuthoritativeVisuals();
+        if (!multiplayer.spectating) updatePlayerMovement();
     }
 
     sendMultiplayerState();
