@@ -1150,7 +1150,9 @@ let multiplayer = {
     deathInfo: null,
     deathReported: false,
     pageVisible: true,
-    lastHostWarningAt: 0
+    lastHostWarningAt: 0,
+    serverAuthoritative: false,
+    lastServerWaveRequestAt: 0
 };
 
 let barricade;
@@ -2654,6 +2656,10 @@ function finishTowerPlacement(tile) {
         showCenterMessage(getMultiplayerBlockedBuildMessage(), 750);
         return;
     }
+    if (multiplayer.enabled && multiplayer.serverAuthoritative) {
+        sendRemoteBuildTowerRequest(tile);
+        return;
+    }
     if (isMultiplayerGuest()) {
         sendRemoteBuildTowerRequest(tile);
     }
@@ -3540,6 +3546,7 @@ function connectMultiplayerSocket() {
         multiplayer.roomId = String(data.roomId || "").toUpperCase();
         multiplayer.hostId = String(data.hostId || "");
         multiplayer.roomSpeed = clampMultiplayerSpeed(data?.settings?.speed);
+        multiplayer.serverAuthoritative = data?.settings?.serverAuthoritative !== false;
         gameSpeed = multiplayer.roomSpeed;
         speedIndex = Math.max(0, speedOptions.indexOf(gameSpeed));
         updateMultiplayerSpeedUI();
@@ -3563,6 +3570,7 @@ function connectMultiplayerSocket() {
         multiplayer.hostId = String(data?.hostId || multiplayer.hostId || "");
         if (data?.settings?.speed) {
             multiplayer.roomSpeed = clampMultiplayerSpeed(data.settings.speed);
+            multiplayer.serverAuthoritative = data?.settings?.serverAuthoritative !== false;
             gameSpeed = multiplayer.roomSpeed;
             speedIndex = Math.max(0, speedOptions.indexOf(gameSpeed));
             updateMultiplayerSpeedUI();
@@ -3577,7 +3585,8 @@ function connectMultiplayerSocket() {
         multiplayer.hostId = String(data.hostId || multiplayer.hostId || "");
         if (data?.settings?.speed) {
             multiplayer.roomSpeed = clampMultiplayerSpeed(data.settings.speed);
-            if (isMultiplayerGuest()) gameSpeed = multiplayer.roomSpeed;
+            multiplayer.serverAuthoritative = data?.settings?.serverAuthoritative !== false;
+            gameSpeed = multiplayer.roomSpeed;
         }
         multiplayer.players = data.players || {};
     });
@@ -3599,7 +3608,7 @@ function connectMultiplayerSocket() {
     });
 
     socket.on("structureActionResult", data => {
-        if (!data || data.roomId !== multiplayer.roomId || !isMultiplayerGuest()) return;
+        if (!data || data.roomId !== multiplayer.roomId || !multiplayer.enabled) return;
         handleStructureActionResult(data);
     });
 
@@ -3637,7 +3646,7 @@ function connectMultiplayerSocket() {
 
 
     socket.on("playerReward", data => {
-        if (!data || data.roomId !== multiplayer.roomId || !isMultiplayerGuest()) return;
+        if (!data || data.roomId !== multiplayer.roomId || !multiplayer.enabled) return;
         const gold = Math.max(0, Number(data.gold) || 0);
         const scoreGain = Math.max(0, Number(data.score) || 0);
         coins = Math.min(Number.MAX_SAFE_INTEGER, coins + gold);
@@ -3657,14 +3666,21 @@ function connectMultiplayerSocket() {
     });
 
     socket.on("buildResult", data => {
-        if (!data || data.roomId !== multiplayer.roomId || !isMultiplayerGuest()) return;
+        if (!data || data.roomId !== multiplayer.roomId || !multiplayer.enabled) return;
         const refund = Math.max(0, Number(data.refund) || 0);
-        if (!data.ok && refund > 0) {
+        const expense = Math.max(0, Number(data.expense) || 0);
+        if (data.ok && expense > 0) {
+            coins = Math.max(0, coins - expense);
+            pendingTowerPurchase = null;
+            pendingBarricadePlacement = null;
+            pendingTrapPlacement = null;
+            pendingMinePlacement = null;
+        } else if (!data.ok && refund > 0) {
             coins = Math.min(Number.MAX_SAFE_INTEGER, coins + refund);
             showCenterMessage(data.message || `Construcción rechazada · +${refund} monedas`, 1000);
-        } else if (data.message) {
-            showCenterMessage(data.message, 850);
         }
+        if (data.message) showCenterMessage(data.message, 850);
+        updateBuildCancelUI();
         updateHud(true);
     });
 
@@ -3988,6 +4004,7 @@ function isMultiplayerHost() {
 }
 
 function isMultiplayerGuest() {
+    if (multiplayer.enabled && multiplayer.serverAuthoritative) return true;
     return Boolean(multiplayer.enabled && multiplayer.inRoom && multiplayer.socket && multiplayer.hostId && multiplayer.socket.id !== multiplayer.hostId);
 }
 
@@ -4027,7 +4044,8 @@ function buildHostAuthoritativeState() {
 }
 
 function applyHostAuthoritativeState(state) {
-    if (!state || !isMultiplayerGuest()) return;
+    if (!state) return;
+    if (!state.serverAuthoritative && !isMultiplayerGuest()) return;
     wave = Number(state.wave) || wave;
     // En multiplayer V4, monedas/score/mejoras/inventario son propios de cada jugador.
     // El host sincroniza el mundo, pero no pisa la economía local del cliente.
@@ -4058,6 +4076,7 @@ function applyHostAuthoritativeState(state) {
 }
 
 function sendHostAuthoritativeState(force = false) {
+    if (multiplayer.serverAuthoritative) return;
     if (!isMultiplayerHost()) return;
     const now = performance.now();
     if (!force && now - multiplayer.lastHostStateSentAt < 115) return;
@@ -4066,6 +4085,7 @@ function sendHostAuthoritativeState(force = false) {
 }
 
 function updateRemotePlayerCombat() {
+    if (multiplayer.serverAuthoritative) return;
     if (!isMultiplayerHost() || !Array.isArray(enemies) || !enemies.length) return;
     const now = getGameTime();
     const myId = multiplayer.socket.id;
@@ -4182,7 +4202,7 @@ function applyRemoteAbilityUse(data) {
 }
 
 function sendRemoteBuildTowerRequest(tile) {
-    if (!isMultiplayerGuest() || !multiplayer.socket || !pendingTowerPurchase || !tile) return false;
+    if (!multiplayer.enabled || !multiplayer.socket || !pendingTowerPurchase || !tile) return false;
     const defKey = pendingTowerPurchase.defKey;
     const def = getTowerDefinition(defKey);
     const price = costs[defKey] ?? def?.cost ?? pendingTowerPurchase.price ?? 0;
@@ -4238,7 +4258,7 @@ function handleRemoteBuildTowerRequest(data) {
 
 
 function sendRemoteBuildBarricadeRequest(point, kind, price, orientation) {
-    if (!isMultiplayerGuest() || !multiplayer.socket || !point) return false;
+    if (!multiplayer.enabled || !multiplayer.socket || !point) return false;
     multiplayer.socket.emit("buildBarricadeRequest", {
         roomId: multiplayer.roomId,
         kind,
@@ -4278,7 +4298,7 @@ function handleRemoteBuildBarricadeRequest(data) {
 
 
 function sendRemoteBuildTrapRequest(point, typeKey, price) {
-    if (!isMultiplayerGuest() || !multiplayer.socket || !point) return false;
+    if (!multiplayer.enabled || !multiplayer.socket || !point) return false;
     multiplayer.socket.emit("buildTrapRequest", { roomId: multiplayer.roomId, typeKey, price, x: point.x, y: point.y });
     return false;
 }
@@ -4307,7 +4327,7 @@ function handleRemoteBuildTrapRequest(data) {
 }
 
 function sendRemoteBuildMineRequest(point, price) {
-    if (!isMultiplayerGuest() || !multiplayer.socket || !point) return false;
+    if (!multiplayer.enabled || !multiplayer.socket || !point) return false;
     multiplayer.socket.emit("buildMineRequest", { roomId: multiplayer.roomId, price, x: point.x, y: point.y });
     return false;
 }
@@ -4368,7 +4388,9 @@ function startMultiplayerGame() {
     gameSpeed = clampMultiplayerSpeed(multiplayer.roomSpeed || gameSpeed || 1);
     updateMultiplayerSpeedUI();
     startGame();
+    if (multiplayer.socket) multiplayer.socket.emit("clientReady", { roomId: multiplayer.roomId });
 }
+
 
 function sendMultiplayerState(force = false) {
     if (!multiplayer.enabled || !multiplayer.inRoom || !multiplayer.socket || !player) return;
@@ -4461,11 +4483,7 @@ function drawMultiplayerPlayers() {
             ctx.arc(0, 0, 10, 0, Math.PI * 2);
             ctx.fill();
         }
-        // Sin aro grande alrededor del sprite: queda más limpio visualmente.
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(0, 23, 4, 0, Math.PI * 2);
-        ctx.fill();
+        // Sin circulito en los pies: el color ya se ve en el nombre/sprite.
         const label = String(remote.name || "Jugador").slice(0, 18);
         const role = getMultiplayerNameRole(label);
         ctx.textAlign = "center";
@@ -4587,7 +4605,7 @@ function drawMultiplayerBadge() {
     ctx.fillStyle = "rgba(0,0,0,0.68)";
     ctx.strokeStyle = "rgba(115,255,159,0.6)";
     ctx.lineWidth = 1;
-    const role = isMultiplayerHost() ? "SIM" : (multiplayer.spectating ? "ESPECTADOR" : "CLIENTE");
+    const role = multiplayer.serverAuthoritative ? "RENDER" : (isMultiplayerHost() ? "SIM" : (multiplayer.spectating ? "ESPECTADOR" : "CLIENTE"));
     const text = `ONLINE · ${role} · Sala ${multiplayer.roomId || "----"}`;
     ctx.font = "12px Arial";
     const width = Math.ceil(ctx.measureText(text).width) + 24;
@@ -4633,6 +4651,7 @@ function startGame() {
         const restored = selectedGameMode === "multiplayer" ? false : restoreSavedRun();
         if (!restored) {
             createDefaultState();
+            if (selectedGameMode === "multiplayer") coins = Math.max(coins, 140);
             hasActiveRun = true;
             gameRunning = true;
             waveInProgress = false;
@@ -4675,6 +4694,23 @@ function startGame() {
 }
 
 function startWave() {
+    if (multiplayer.enabled && multiplayer.serverAuthoritative && multiplayer.socket && multiplayer.inRoom) {
+        const nowReq = performance.now();
+        if (nowReq - (multiplayer.lastServerWaveRequestAt || 0) > 600) {
+            multiplayer.lastServerWaveRequestAt = nowReq;
+            multiplayer.socket.emit("startServerWave", { roomId: multiplayer.roomId, wave });
+        }
+        buildPhaseActive = false;
+        buildPhaseEndsAt = 0;
+        waveInProgress = true;
+        gameRunning = true;
+        closeShop();
+        waveSummaryPanel.classList.add("hidden");
+        gameOverScreen.classList.add("hidden");
+        isPaused = false;
+        updateHud(true);
+        return;
+    }
     buildPhaseActive = false;
     buildPhaseEndsAt = 0;
     updateBuildPhaseUI();
@@ -7597,13 +7633,7 @@ function drawPlayer() {
         ctx.fillText("P", player.x - 5, player.y + 5);
     }
 
-    if (multiplayer.enabled) {
-        const myColor = getMultiplayerPlayerColor(getLocalMultiplayerId()) || "#ffffff";
-        ctx.fillStyle = myColor;
-        ctx.beginPath();
-        ctx.arc(player.x, player.y + 23, 4, 0, Math.PI * 2);
-        ctx.fill();
-    }
+    // En multiplayer no dibujamos marcador circular en los pies.
 
     if (player.name) {
         if (player.developer) {
@@ -8915,6 +8945,17 @@ function draw() {
     drawMultiplayerBadge();
 }
 
+function scheduleNextGameLoop() {
+    // requestAnimationFrame se frena cuando la pestaña queda oculta.
+    // Con este fallback la partida no queda congelada por alt-tab; y si el host
+    // deja de estar visible, el server puede migrar el host a otro jugador.
+    if (document.hidden) {
+        setTimeout(gameLoop, 100);
+    } else {
+        requestAnimationFrame(gameLoop);
+    }
+}
+
 function gameLoop() {
     const realNow = performance.now();
     const delta = realNow - lastFrameTime;
@@ -8933,18 +8974,18 @@ function gameLoop() {
     const waveActive = gameRunning && waveInProgress && !isPaused && !managementModeActive;
     const buildIntermissionActive = buildPhaseActive && !isPaused && !isElementVisible(shop) && !isElementVisible(consolePanel) && !isElementVisible(waveSummaryPanel) && !isElementVisible(gameOverScreen);
 
-    if (gameStarted && !document.hidden && (waveActive || buildIntermissionActive)) {
+    if (gameStarted && (waveActive || buildIntermissionActive)) {
         gameTime += delta * gameSpeed;
     }
 
     if (!gameStarted) {
-        requestAnimationFrame(gameLoop);
+        scheduleNextGameLoop();
         return;
     }
 
     const now = getGameTime();
     const multiplayerGuest = isMultiplayerGuest() || Boolean(multiplayer.enabled && multiplayer.spectating);
-    if (multiplayerGuest && multiplayer.latestHostState) applyHostAuthoritativeState(multiplayer.latestHostState);
+    if (multiplayer.enabled && multiplayer.latestHostState) applyHostAuthoritativeState(multiplayer.latestHostState);
 
     if (waveActive && !multiplayerGuest) {
         if (enemiesSpawned < enemiesToSpawn && now - lastSpawnTime > spawnInterval) {
@@ -8984,7 +9025,7 @@ function gameLoop() {
     if (!multiplayer.enabled) autoSaveRun();
     draw();
 
-    requestAnimationFrame(gameLoop);
+    scheduleNextGameLoop();
 }
 
 
@@ -9019,7 +9060,7 @@ function isManagementModeActive() {
         isElementVisible(shop) ||
         isElementVisible(structurePanel) ||
         isElementVisible(consolePanel) ||
-        document.activeElement === multiplayerChatInput ||
+        (!multiplayer.enabled && document.activeElement === multiplayerChatInput) ||
         isElementVisible(waveSummaryPanel) ||
         isElementVisible(gameOverScreen) ||
         isInBuildPlacementMode()
@@ -10420,6 +10461,10 @@ function finishBarricadePlacement() {
     }
     const { kind, costKey } = pendingBarricadePlacement;
     const price = getBarricadeBaseCost(kind);
+    if (multiplayer.enabled && multiplayer.serverAuthoritative) {
+        sendRemoteBuildBarricadeRequest(point, kind, price, barricadeBuildOrientation);
+        return;
+    }
     if (isMultiplayerGuest()) {
         if (sendRemoteBuildBarricadeRequest(point, kind, price, barricadeBuildOrientation)) return;
     }
@@ -10633,6 +10678,10 @@ function finishTrapPlacement() {
         return;
     }
     const price = costs[def.key] ?? def.cost;
+    if (multiplayer.enabled && multiplayer.serverAuthoritative) {
+        sendRemoteBuildTrapRequest(point, pendingTrapPlacement.typeKey, price);
+        return;
+    }
     if (isMultiplayerGuest()) {
         if (sendRemoteBuildTrapRequest(point, pendingTrapPlacement.typeKey, price)) return;
     }
@@ -10713,6 +10762,10 @@ function finishMinePlacement() {
         return;
     }
     const price = costs.mineGold ?? getMineCostForCount();
+    if (multiplayer.enabled && multiplayer.serverAuthoritative) {
+        sendRemoteBuildMineRequest(point, price);
+        return;
+    }
     if (isMultiplayerGuest()) {
         if (sendRemoteBuildMineRequest(point, price)) return;
     }
@@ -11091,6 +11144,13 @@ nextWaveBtn.addEventListener("click", () => {
     autoRepeatWaveMode = false;
     isRepeatingWave = false;
     currentGoldMultiplier = 1;
+    if (multiplayer.enabled && multiplayer.serverAuthoritative && multiplayer.socket) {
+        multiplayer.socket.emit("startServerWave", { roomId: multiplayer.roomId, wave });
+        waveInProgress = true;
+        gameRunning = true;
+        updateHud(true);
+        return;
+    }
     startWave();
 });
 
