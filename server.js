@@ -174,8 +174,24 @@ function emitSnapshot(roomId) {
   if (!room) return;
   const players = {};
   for (const player of room.players.values()) players[player.id] = { ...player, wave: room.world.wave };
-  io.to(roomId).volatile.emit('snapshot', { roomId, hostId: room.hostId, settings: getRoomSettings(roomId), players, serverTime: Date.now() });
-  io.to(roomId).volatile.emit('hostGameState', { roomId, state: buildWorldSnapshot(room) });
+  const world = buildWorldSnapshot(room);
+
+  // En la versión server-authoritative el snapshot del mundo viaja junto al
+  // snapshot normal. Antes iba solo por `hostGameState`; si ese paquete se
+  // perdía o el cliente no lo aplicaba a tiempo, el server podía hacer daño
+  // con enemigos que el navegador todavía no estaba dibujando.
+  io.to(roomId).volatile.emit('snapshot', {
+    roomId,
+    hostId: room.hostId,
+    settings: getRoomSettings(roomId),
+    players,
+    world,
+    serverTime: Date.now()
+  });
+
+  // Compatibilidad con clientes que todavía escuchan el nombre anterior.
+  io.to(roomId).volatile.emit('hostGameState', { roomId, state: world });
+  io.to(roomId).volatile.emit('serverWorldState', { roomId, state: world });
 }
 
 function buildWorldSnapshot(room) {

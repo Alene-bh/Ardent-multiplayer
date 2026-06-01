@@ -3589,6 +3589,11 @@ function connectMultiplayerSocket() {
             gameSpeed = multiplayer.roomSpeed;
         }
         multiplayer.players = data.players || {};
+        syncLocalPlayerFromServerSnapshot(data.players || {});
+        if (data.world) {
+            multiplayer.latestHostState = data.world;
+            applyHostAuthoritativeState(data.world);
+        }
     });
 
     socket.on("chatMessage", data => {
@@ -3613,6 +3618,12 @@ function connectMultiplayerSocket() {
     });
 
     socket.on("hostGameState", data => {
+        if (!data || data.roomId !== multiplayer.roomId) return;
+        multiplayer.latestHostState = data.state || null;
+        applyHostAuthoritativeState(multiplayer.latestHostState);
+    });
+
+    socket.on("serverWorldState", data => {
         if (!data || data.roomId !== multiplayer.roomId) return;
         multiplayer.latestHostState = data.state || null;
         applyHostAuthoritativeState(multiplayer.latestHostState);
@@ -4043,6 +4054,43 @@ function buildHostAuthoritativeState() {
     };
 }
 
+function syncLocalPlayerFromServerSnapshot(playersById = {}) {
+    if (!multiplayer?.enabled || !multiplayer?.socket || !player) return;
+    const serverMe = playersById[multiplayer.socket.id];
+    if (!serverMe) return;
+
+    // En modo server-authoritative el HP/monedas/score reales vienen de Render.
+    // Si no sincronizamos esto, podés recibir daño invisible o ver HUD viejo.
+    if (Number.isFinite(Number(serverMe.hp))) player.hp = Math.max(0, Number(serverMe.hp));
+    if (Number.isFinite(Number(serverMe.maxHp))) player.maxHp = Math.max(1, Number(serverMe.maxHp));
+    if (Number.isFinite(Number(serverMe.coins))) coins = Math.max(0, Number(serverMe.coins));
+    if (Number.isFinite(Number(serverMe.score))) score = Math.max(0, Number(serverMe.score));
+    if (serverMe.alive === false && player.hp > 0) player.hp = 0;
+}
+
+function normalizeServerWorldArray(list, kind = "entity") {
+    if (!Array.isArray(list)) return [];
+    return list.filter(Boolean).map((item, index) => {
+        const entity = { ...item };
+        entity.id = entity.id || `${kind}-${index}`;
+        entity.x = Number.isFinite(Number(entity.x)) ? Number(entity.x) : 0;
+        entity.y = Number.isFinite(Number(entity.y)) ? Number(entity.y) : 0;
+        if (kind === "enemy") {
+            entity.radius = Number.isFinite(Number(entity.radius)) ? Number(entity.radius) : (entity.isBoss ? 42 : 18);
+            entity.hp = Number.isFinite(Number(entity.hp)) ? Number(entity.hp) : 1;
+            entity.maxHp = Number.isFinite(Number(entity.maxHp)) ? Number(entity.maxHp) : Math.max(1, entity.hp);
+            entity.color = entity.color || "limegreen";
+            entity.hitFlash = Number(entity.hitFlash) || 0;
+        }
+        if (kind === "projectile") {
+            entity.radius = Number.isFinite(Number(entity.radius)) ? Number(entity.radius) : 5;
+            entity.color = entity.color || "white";
+            entity.hitEnemies = [];
+        }
+        return entity;
+    });
+}
+
 function applyHostAuthoritativeState(state) {
     if (!state) return;
     if (!state.serverAuthoritative && !isMultiplayerGuest()) return;
@@ -4060,17 +4108,17 @@ function applyHostAuthoritativeState(state) {
     spawnInterval = Number(state.spawnInterval) || spawnInterval;
     lastSpawnTime = Number(state.lastSpawnTime) || lastSpawnTime;
     baseCore = state.baseCore || baseCore;
-    barricades = Array.isArray(state.barricades) ? state.barricades : barricades;
+    barricades = Array.isArray(state.barricades) ? normalizeServerWorldArray(state.barricades, "barricade") : barricades;
     barricade = barricades?.[0] || barricade;
-    towers = Array.isArray(state.towers) ? state.towers : towers;
-    enemies = Array.isArray(state.enemies) ? state.enemies : enemies;
-    projectiles = Array.isArray(state.projectiles) ? state.projectiles.map(p => ({ ...p, hitEnemies: [] })) : projectiles;
-    bossProjectiles = Array.isArray(state.bossProjectiles) ? state.bossProjectiles : bossProjectiles;
+    towers = Array.isArray(state.towers) ? normalizeServerWorldArray(state.towers, "tower") : towers;
+    enemies = Array.isArray(state.enemies) ? normalizeServerWorldArray(state.enemies, "enemy") : enemies;
+    projectiles = Array.isArray(state.projectiles) ? normalizeServerWorldArray(state.projectiles, "projectile") : projectiles;
+    bossProjectiles = Array.isArray(state.bossProjectiles) ? normalizeServerWorldArray(state.bossProjectiles, "projectile") : bossProjectiles;
     slowZones = Array.isArray(state.slowZones) ? state.slowZones : slowZones;
     poisonZones = Array.isArray(state.poisonZones) ? state.poisonZones : poisonZones;
     fireZones = Array.isArray(state.fireZones) ? state.fireZones : fireZones;
-    traps = Array.isArray(state.traps) ? state.traps : traps;
-    mines = Array.isArray(state.mines) ? state.mines : mines;
+    traps = Array.isArray(state.traps) ? normalizeServerWorldArray(state.traps, "trap") : traps;
+    mines = Array.isArray(state.mines) ? normalizeServerWorldArray(state.mines, "mine") : mines;
     titanShards = Array.isArray(state.titanShards) ? state.titanShards : titanShards;
     effects = Array.isArray(state.effects) ? state.effects : effects;
 }
